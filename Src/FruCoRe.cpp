@@ -326,16 +326,16 @@ void UFruCoReRenderDevice::SetProjection(FSceneNode *Frame, UBOOL bNearZ)
     
     auto GlobalUniforms = GlobalUniformsBuffer.GetElementPtr(0);
 
-    FLOAT InvAspect = Frame->FY / Frame->FX;
+    FLOAT Aspect = Frame->FX / Frame->FY;
     FLOAT FovTan = appTan(Viewport->Actor->FovAngle * PI / 360.f);
     FLOAT InvFovTan = 1.f / FovTan;
     RFX2 = 2.0 * FovTan / Frame->FX;
     RFY2 = 2.0 * FovTan * InvAspect / Frame->FY;
     
     GlobalUniforms->ProjectionMatrix = simd_matrix_from_rows(
-        (simd::float4){ 2 * InvFovTan * InvAspect, 0.f, 0.f, 0.f },
+        (simd::float4){ InvFovTan, 0.f, 0.f, 0.f },
         // The Metal coordinate system is left-handed so we flip the Y axis here!
-        (simd::float4){ 0.f, -2 * InvFovTan, 0.f, 0.f },
+        (simd::float4){ 0.f, -InvFovTan * Aspect, 0.f, 0.f },
         (simd::float4){ 0.f, 0.f, zFar / (zFar - zNear), -zFar * zNear / (zFar - zNear) },
         (simd::float4){ 0.f, 0.f, 1.f, 0.f }
     );
@@ -378,7 +378,9 @@ void UFruCoReRenderDevice::CreateDepthTexture()
     }
     
     auto DrawableSize = Layer->drawableSize();
-    MTL::TextureDescriptor* DepthTextureDescriptor = MTL::TextureDescriptor::texture2DDescriptor(MTL::PixelFormatDepth32Float, DrawableSize.width, DrawableSize.height, false);
+    auto Width = StoredFX > 0 ? StoredFX : DrawableSize.width;
+    auto Height = StoredFY > 0 ? StoredFY : DrawableSize.height;
+    MTL::TextureDescriptor* DepthTextureDescriptor = MTL::TextureDescriptor::texture2DDescriptor(MTL::PixelFormatDepth32Float, Width, Height, false);
     
     // Store on the GPU. We're not going to do anything fancy with this on the CPU
     DepthTextureDescriptor->setStorageMode(MTL::StorageModePrivate);
@@ -463,7 +465,7 @@ void UFruCoReRenderDevice::SetDepthTesting(UBOOL Enabled)
 }
 
 /*-----------------------------------------------------------------------------
-    SetDepthTesting
+    GetShaderLibrary
 -----------------------------------------------------------------------------*/
 MTL::Library* UFruCoReRenderDevice::GetShaderLibrary()
 {
