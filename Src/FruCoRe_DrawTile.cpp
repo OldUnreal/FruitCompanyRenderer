@@ -56,6 +56,9 @@ void UFruCoReRenderDevice::DrawTile(FSceneNode* Frame, FTextureInfo& Info, FLOAT
     Shader->DrawBuffer.StartDrawCall();
     auto Out = Shader->VertexBuffer.GetCurrentElementPtr();
     
+    // X/XL/Y/YL are screen space coordinates
+    // Z is the depth in camera/eye space
+    
     Out[0].Point = simd::make_float4(X      , Y     , Z, 1.f);
     Out[1].Point = simd::make_float4(X + XL , Y     , Z, 1.f);
     Out[2].Point = simd::make_float4(X + XL , Y + YL, Z, 1.f);

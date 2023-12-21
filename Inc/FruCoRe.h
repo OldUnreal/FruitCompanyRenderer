@@ -118,7 +118,7 @@ class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
                 Buffers.AddZeroed(1);
                 
                 // Initialize the new buffer
-                auto NewBuffer = Device->newBuffer(BufferSize * sizeof(T), MTL::ResourceStorageModeManaged);
+                auto NewBuffer = Device->newBuffer(BufferSize * sizeof(T), MTL::ResourceStorageModeShared);
                 check(NewBuffer);
                 
                 // Now this part is pretty tricky. We need to ensure that the buffers
@@ -193,12 +193,12 @@ class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
             auto Buffer = Buffers(ActiveBuffer);
             if (bFullyBuffer)
             {
-                Buffer->didModifyRange(NS::Range(0, SizeBytes()));
+                //Buffer->didModifyRange(NS::Range(0, SizeBytes()));
             }
             else if (Index - EnqueuedElements > 0)
             {
                 const auto PrevEnqueuedBytes = EnqueuedElements * sizeof(T);
-                Buffer->didModifyRange(NS::Range(PrevEnqueuedBytes, SizeBytes() - PrevEnqueuedBytes));
+                //Buffer->didModifyRange(NS::Range(PrevEnqueuedBytes, SizeBytes() - PrevEnqueuedBytes));
             }
             EnqueuedElements = Index;
         }
@@ -265,7 +265,7 @@ class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
             Sync = dispatch_semaphore_create(NUMBUFFERS-1);
             Buffers.AddZeroed(NUMBUFFERS);
             for (INT i = 0; i < NUMBUFFERS; ++i)
-                Buffers(i) = Device->newBuffer(BufferSize * sizeof(T), MTL::ResourceStorageModeManaged);
+                Buffers(i) = Device->newBuffer(BufferSize * sizeof(T), MTL::ResourceStorageModeShared);
             EnqueuedElements = ActiveBuffer = Index = 0;
             VertexBindingIndex = VertexIndex;
             FragmentBindingIndex = FragmentIndex;

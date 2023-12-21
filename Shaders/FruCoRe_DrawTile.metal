@@ -24,16 +24,16 @@ vertex TileVertexOutput DrawTileVertex
 )
 {
     TileVertexOutput Result;
-    float4 InVertex = Vertices[VertexID].Point;
-    
-    float4 Projected = Uniforms->ProjectionMatrix * InVertex * 2;
-
-    // The vertex is already in screen space coordinates. We just need to convert to NDC
+    float4 InVertex  = Vertices[VertexID].Point;
+    float4 Projected = Uniforms->ProjectionMatrix * InVertex;
+    // Make sure that points _on_ the near plane have an NDC depth of 0
+    Projected.z -= Uniforms->zNear;
+    // The vertex is already in screen space coordinates. We just need to convert to clip space
     Result.Position = float4(
-        -1 + 2 * InVertex.x / Uniforms->ViewportWidth,
-        +1 - 2 * InVertex.y / Uniforms->ViewportHeight,
+        -1.f + 2.f * InVertex.x / Uniforms->ViewportWidth,
+        +1.f - 2.f * InVertex.y / Uniforms->ViewportHeight,
         Projected.z / Projected.w,
-        1 // We don't want any normalization so we set w to 1 here
+        1.f // We don't want any normalization so we set w to 1 here. This makes the clip space coordinates equal to the final NDC coordinates
     );
     Result.UV = float2(
         Vertices[VertexID].UV.x * Data[InstanceID].UMult,

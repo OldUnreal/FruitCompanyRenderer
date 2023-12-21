@@ -134,7 +134,7 @@ void UFruCoReRenderDevice::SetTexture(INT TexNum, FTextureInfo &Info, DWORD Poly
             TextureDescriptor->setWidth( Info.USize );
             TextureDescriptor->setHeight( Info.VSize );
             TextureDescriptor->setTextureType( MTL::TextureType2D );
-            TextureDescriptor->setStorageMode( MTL::StorageModeManaged );
+            TextureDescriptor->setStorageMode( MTL::StorageModeShared );
             TextureDescriptor->setUsage( MTL::ResourceUsageSample | MTL::ResourceUsageRead );
             TextureDescriptor->setPixelFormat(TextureFormat ? TextureFormat->MetalFormat : MTL::PixelFormatRGBA8Unorm);
             
@@ -162,8 +162,11 @@ void UFruCoReRenderDevice::SetTexture(INT TexNum, FTextureInfo &Info, DWORD Poly
             delete[] TextureData;
     }
     
-    CommandEncoder->setFragmentTexture(Texture->Texture, TexNum);
-    BoundTextures[TexNum] = Texture;
+    //if (BoundTextures[TexNum] != Texture)
+    {
+        CommandEncoder->setFragmentTexture(Texture->Texture, TexNum);
+        BoundTextures[TexNum] = Texture;
+    }
     
     // recalculate texture params
     Texture->UPan  = Info.Pan.X + PanBias * Info.UScale;
