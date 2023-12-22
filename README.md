@@ -18,11 +18,6 @@ The following features are not implemented (yet):
 * Editor support
 * Line rendering
 
-Known issues:
-
-* Certain meshes (e.g., UT's health vials) do not render correctly. I suspect this is because some of the blending modes are not implemented correctly
-* 3D projection for tiles has some issues. This issue is particularly visible when shooting a distant shock rifle ball. Although I have only briefly looked into this problem, it seems like the renderer still writes depth values for discarded fragments 
-
 ## Build Instructions
 
 ### Prerequisites
