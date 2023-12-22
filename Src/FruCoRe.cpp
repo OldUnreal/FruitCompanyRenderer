@@ -55,10 +55,11 @@ UBOOL UFruCoReRenderDevice::Init(UViewport* InViewport, INT NewX, INT NewY, INT 
     MTL::DepthStencilDescriptor* DepthStencilDescriptor = MTL::DepthStencilDescriptor::alloc()->init();
     DepthStencilDescriptor->setDepthCompareFunction(MTL::CompareFunction::CompareFunctionLessEqual);
     DepthStencilDescriptor->setDepthWriteEnabled(true);
-    DepthStencilStateEnabled = Device->newDepthStencilState(DepthStencilDescriptor);
-    DepthStencilDescriptor->setDepthCompareFunction(MTL::CompareFunction::CompareFunctionAlways);
+    DepthStencilStates[DEPTH_Test_And_Write] = Device->newDepthStencilState(DepthStencilDescriptor);
     DepthStencilDescriptor->setDepthWriteEnabled(false);
-    DepthStencilStateDisabled = Device->newDepthStencilState(DepthStencilDescriptor);
+    DepthStencilStates[DEPTH_Test_No_Write] = Device->newDepthStencilState(DepthStencilDescriptor);
+    DepthStencilDescriptor->setDepthCompareFunction(MTL::CompareFunction::CompareFunctionAlways);
+    DepthStencilStates[DEPTH_No_Test_No_Write] = Device->newDepthStencilState(DepthStencilDescriptor);
     DepthStencilDescriptor->release();
     
     // Create uniforms buffer
@@ -87,10 +88,10 @@ UBOOL UFruCoReRenderDevice::Init(UViewport* InViewport, INT NewX, INT NewY, INT 
 -----------------------------------------------------------------------------*/
 void UFruCoReRenderDevice::InitShaders()
 {
-    Shaders[Tile_Prog] = new DrawTileProgram(this, TEXT("DrawTile"), "DrawTileVertex", "DrawTileFragment");
-    Shaders[Complex_Prog] = new DrawComplexProgram(this, TEXT("DrawComplex"), "DrawComplexVertex", "DrawComplexFragment");
-    Shaders[Gouraud_Prog] = new DrawGouraudProgram(this, TEXT("DrawGouraud"), "DrawGouraudVertex", "DrawGouraudFragment");
-    Shaders[Simple_Triangle_Prog] = new DrawSimpleTriangleProgram(this, TEXT("DrawSimpleTriangle"), "DrawSimpleTriangleVertex", "DrawSimpleTriangleFragment");
+    Shaders[SHADER_Tile] = new DrawTileProgram(this, TEXT("DrawTile"), "DrawTileVertex", "DrawTileFragment");
+    Shaders[SHADER_Complex] = new DrawComplexProgram(this, TEXT("DrawComplex"), "DrawComplexVertex", "DrawComplexFragment");
+    Shaders[SHADER_Gouraud] = new DrawGouraudProgram(this, TEXT("DrawGouraud"), "DrawGouraudVertex", "DrawGouraudFragment");
+    Shaders[SHADER_Simple_Triangle] = new DrawSimpleTriangleProgram(this, TEXT("DrawSimpleTriangle"), "DrawSimpleTriangleVertex", "DrawSimpleTriangleFragment");
     
     for (auto Shader : Shaders)
     {
@@ -154,7 +155,7 @@ UBOOL UFruCoReRenderDevice::Exec(const TCHAR* Cmd, FOutputDevice& Ar)
 -----------------------------------------------------------------------------*/
 void UFruCoReRenderDevice::Lock(FPlane _FlashScale, FPlane _FlashFog, FPlane ScreenClear, DWORD RenderLockFlags, BYTE* HitData, INT* HitSize)
 {
-    SetDepthTesting(true);
+    SetDepthMode(DEPTH_Test_And_Write);
     DrawingWeapon = false;
     FlashScale = _FlashScale;
     FlashFog = _FlashFog;
@@ -171,7 +172,7 @@ void UFruCoReRenderDevice::Lock(FPlane _FlashScale, FPlane _FlashFog, FPlane Scr
 -----------------------------------------------------------------------------*/
 void UFruCoReRenderDevice::Unlock(UBOOL Blit)
 {
-    SetProgram(No_Prog);
+    SetProgram(SHADER_None);
     
     CommandEncoder->endEncoding();
     if (Blit)
@@ -190,7 +191,7 @@ void UFruCoReRenderDevice::Unlock(UBOOL Blit)
 void UFruCoReRenderDevice::ClearZ(FSceneNode* Frame)
 {
     INT OldProgram = ActiveProgram;
-    SetProgram(No_Prog);
+    SetProgram(SHADER_None);
     
     // This is kind of annoying. We can't simply switch to a different 
     // DepthStencilState. Instead, we need to create a new command encoder
@@ -304,7 +305,7 @@ void UFruCoReRenderDevice::SetProjection(FSceneNode *Frame, UBOOL bNearZ)
     INT OldProgram = ActiveProgram;
     if (CommandEncoder)
     {
-        SetProgram(No_Prog);
+        SetProgram(SHADER_None);
         GlobalUniformsBuffer.Rotate(Device);
         GlobalUniformsBuffer.Advance(1);
     }
@@ -330,7 +331,7 @@ void UFruCoReRenderDevice::SetProjection(FSceneNode *Frame, UBOOL bNearZ)
     FLOAT FovTan = appTan(Viewport->Actor->FovAngle * PI / 360.f);
     FLOAT InvFovTan = 1.f / FovTan;
     RFX2 = 2.0 * FovTan / Frame->FX;
-    RFY2 = 2.0 * FovTan * InvAspect / Frame->FY;
+    RFY2 = 2.0 * FovTan / (Frame->FY * Aspect);
     
     GlobalUniforms->ProjectionMatrix = simd_matrix_from_rows(
         (simd::float4){ InvFovTan, 0.f, 0.f, 0.f },
@@ -434,7 +435,7 @@ void UFruCoReRenderDevice::CreateCommandEncoder(MTL::CommandBuffer *Buffer, bool
     */
     
     CommandEncoder = CommandBuffer->renderCommandEncoder(PassDescriptor);
-    CommandEncoder->setDepthStencilState(DepthTestingEnabled ? DepthStencilStateEnabled : DepthStencilStateDisabled);
+    CommandEncoder->setDepthStencilState(DepthStencilStates[CurrentDepthMode]);
     CommandEncoder->setCullMode(MTL::CullModeBack);
     CommandEncoder->setFrontFacingWinding(MTL::Winding::WindingClockwise);
     
@@ -452,15 +453,18 @@ void UFruCoReRenderDevice::CreateCommandEncoder(MTL::CommandBuffer *Buffer, bool
 }
 
 /*-----------------------------------------------------------------------------
-    SetDepthTesting
+    SetDepthMode
 -----------------------------------------------------------------------------*/
-void UFruCoReRenderDevice::SetDepthTesting(UBOOL Enabled)
+void UFruCoReRenderDevice::SetDepthMode(DepthMode Mode)
 {
-    if (Enabled != DepthTestingEnabled)
+    if (Mode != CurrentDepthMode)
     {
-        DepthTestingEnabled = Enabled;
+        CurrentDepthMode = Mode;
         if (CommandEncoder)
-            CommandEncoder->setDepthStencilState(Enabled ? DepthStencilStateEnabled : DepthStencilStateDisabled);
+        {
+            Shaders[ActiveProgram]->Flush();
+            CommandEncoder->setDepthStencilState(DepthStencilStates[Mode]);
+        }
     }
 }
 
@@ -507,7 +511,7 @@ void UFruCoReRenderDevice::ShaderProgram::BuildPipelineStates
     
     struct BlendState
     {
-        BlendModes BlendMode;
+        BlendMode BlendMode;
         const TCHAR* Name;
         bool BlendingEnabled;
         MTL::BlendOperation BlendOperation;
@@ -550,9 +554,25 @@ void UFruCoReRenderDevice::ShaderProgram::BuildPipelineStates
 }
 
 /*-----------------------------------------------------------------------------
-    SetBlendMode
+    FixPolyFlags
 -----------------------------------------------------------------------------*/
-void UFruCoReRenderDevice::SetBlendMode(DWORD PolyFlags)
+DWORD UFruCoReRenderDevice::FixPolyFlags(DWORD PolyFlags)
+{
+    if( (PolyFlags & (PF_RenderFog|PF_Translucent)) != PF_RenderFog )
+        PolyFlags &= ~PF_RenderFog;
+
+    if (!(PolyFlags & (PF_Translucent | PF_Modulated | PF_AlphaBlend | PF_Highlighted)))
+        PolyFlags |= PF_Occlude;
+    else
+        PolyFlags &= ~PF_Occlude;
+    
+    return PolyFlags;
+}
+
+/*-----------------------------------------------------------------------------
+    SetBlendAndDepthMode
+-----------------------------------------------------------------------------*/
+void UFruCoReRenderDevice::SetBlendAndDepthMode(DWORD PolyFlags)
 {
     auto BlendMode = BLEND_None;
     if (PolyFlags & PF_Invisible)
@@ -575,4 +595,6 @@ void UFruCoReRenderDevice::SetBlendMode(DWORD PolyFlags)
         CommandEncoder->setRenderPipelineState(ActiveShader->PipelineStates[BlendMode]);
         ActiveShader->ActivePipelineState = ActiveShader->PipelineStates[BlendMode];
     }
+    
+    SetDepthMode((PolyFlags & PF_Occlude) == PF_Occlude ? DEPTH_Test_And_Write : DEPTH_Test_No_Write);
 }

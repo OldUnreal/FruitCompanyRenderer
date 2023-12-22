@@ -15,8 +15,8 @@
 
 void UFruCoReRenderDevice::DrawGouraudPolygon(FSceneNode* Frame, FTextureInfo& Info, FTransTexture** Pts, INT NumPts, DWORD PolyFlags, FSpanBuffer* Span)
 {
-    SetProgram(Gouraud_Prog);
-    auto Shader = dynamic_cast<DrawGouraudProgram*>(Shaders[Gouraud_Prog]);
+    SetProgram(SHADER_Gouraud);
+    auto Shader = dynamic_cast<DrawGouraudProgram*>(Shaders[SHADER_Gouraud]);
     
     if (NumPts < 3 /*|| Frame->Recursion > MAX_FRAME_RECURSION*/ ) //reject invalid.
         return;
@@ -58,8 +58,8 @@ void UFruCoReRenderDevice::DrawGouraudPolygon(FSceneNode* Frame, FTextureInfo& I
 #if ENGINE_VERSION==227 || UNREAL_TOURNAMENT_OLDUNREAL
 void UFruCoReRenderDevice::DrawGouraudPolyList(FSceneNode* Frame, FTextureInfo& Info, FTransTexture* Pts, INT NumPts, DWORD PolyFlags, FSpanBuffer* Span)
 {
-    SetProgram(Gouraud_Prog);
-    auto Shader = dynamic_cast<DrawGouraudProgram*>(Shaders[Gouraud_Prog]);
+    SetProgram(SHADER_Gouraud);
+    auto Shader = dynamic_cast<DrawGouraudProgram*>(Shaders[SHADER_Gouraud]);
     
     if (NumPts < 3 /*|| Frame->Recursion > MAX_FRAME_RECURSION*/) //reject invalid.
         return;
@@ -118,8 +118,8 @@ void UFruCoReRenderDevice::DrawGouraudPolyList(FSceneNode* Frame, FTextureInfo& 
 #if UNREAL_TOURNAMENT_OLDUNREAL
 void UFruCoReRenderDevice::DrawGouraudTriangles(const FSceneNode* Frame, const FTextureInfo& Info, FTransTexture* const Pts, INT NumPts, DWORD PolyFlags, DWORD DataFlags, FSpanBuffer* Span)
 {
-    SetProgram(Gouraud_Prog);
-    auto Shader = dynamic_cast<DrawGouraudProgram*>(Shaders[Gouraud_Prog]);
+    SetProgram(SHADER_Gouraud);
+    auto Shader = dynamic_cast<DrawGouraudProgram*>(Shaders[SHADER_Gouraud]);
     
     INT StartOffset = 0;
     INT i = 0;
@@ -213,16 +213,10 @@ void UFruCoReRenderDevice::DrawGouraudProgram::PrepareDrawCall(FSceneNode* Frame
     
     GouraudInstanceData* Data = InstanceDataBuffer.GetCurrentElementPtr();
     
-    if( (PolyFlags & (PF_RenderFog|PF_Translucent))!=PF_RenderFog )
-        PolyFlags &= ~PF_RenderFog;
-
-    if (!(PolyFlags & (PF_Translucent | PF_Modulated | PF_AlphaBlend | PF_Highlighted)))
-        PolyFlags |= PF_Occlude;
-    
     Data->DrawFlags = NoNearZ ? DF_NoNearZ : DF_None;
-    Data->PolyFlags = PolyFlags;
+    Data->PolyFlags = RenDev->FixPolyFlags(PolyFlags);
     
-    RenDev->SetBlendMode(PolyFlags);
+    RenDev->SetBlendAndDepthMode(PolyFlags);
 
     RenDev->SetTexture(0, Info, PolyFlags, 0.f);
     Data->DrawFlags |= DF_DiffuseTexture;

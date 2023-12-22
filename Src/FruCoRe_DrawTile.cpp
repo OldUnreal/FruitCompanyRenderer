@@ -16,18 +16,10 @@ void UFruCoReRenderDevice::DrawTile(FSceneNode* Frame, FTextureInfo& Info, FLOAT
 {
     SetSceneNode(Frame);
     
-    SetProgram(Tile_Prog);
-    auto Shader = dynamic_cast<DrawTileProgram*>(Shaders[Tile_Prog]);
+    SetProgram(SHADER_Tile);
+    auto Shader = dynamic_cast<DrawTileProgram*>(Shaders[SHADER_Tile]);
 
-    if (PolyFlags & (PF_Translucent | PF_Modulated))
-        PolyFlags &= ~PF_Occlude;
-    else PolyFlags |= PF_Occlude;
-    PolyFlags &= ~(PF_RenderHint | PF_Unlit);
-    
-    // Hack to render HUD on top of everything in 469
-#if UNREAL_TOURNAMENT_OLDUNREAL
-    UBOOL ShouldDepthTest = ((GUglyHackFlags & HACKFLAGS_PostRender) == 0) || Abs(1.f - Z) > SMALL_NUMBER;
-#endif
+    PolyFlags = FixPolyFlags(PolyFlags);
     
     if (PolyFlags & PF_Modulated)
         Color = FPlane(1.f, 1.f, 1.f, 1.f);
@@ -39,8 +31,13 @@ void UFruCoReRenderDevice::DrawTile(FSceneNode* Frame, FTextureInfo& Info, FLOAT
     if (!Shader->VertexBuffer.CanBuffer(6) || !Shader->InstanceDataBuffer.CanBuffer(1))
         Shader->RotateBuffers();
     
-    SetBlendMode(PolyFlags);
-    SetDepthTesting(ShouldDepthTest);
+    SetBlendAndDepthMode(PolyFlags);
+    
+    // Hack to render HUD on top of everything in 469
+#if UNREAL_TOURNAMENT_OLDUNREAL
+    if (!(((GUglyHackFlags & HACKFLAGS_PostRender) == 0) || Abs(1.f - Z) > SMALL_NUMBER))
+        SetDepthMode(DEPTH_No_Test_No_Write);
+#endif
     SetTexture(0, Info, PolyFlags, 0.f);
     const auto Texture = BoundTextures[0];
     
@@ -86,5 +83,4 @@ void UFruCoReRenderDevice::DrawTileProgram::DeactivateShader()
 {
     Flush();
     ActivePipelineState = nullptr;
-    RenDev->SetDepthTesting(true);
 }

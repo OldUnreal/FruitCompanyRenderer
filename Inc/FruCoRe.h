@@ -351,16 +351,16 @@ class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
     //
     enum ShaderProgType
     {
-        No_Prog,
-        Simple_Line_Prog,
-        Simple_Triangle_Prog,
-        Tile_Prog,
-        Gouraud_Prog,
-        Complex_Prog,
-        Max_Prog,
+        SHADER_None,
+        SHADER_Simple_Line,
+        SHADER_Simple_Triangle,
+        SHADER_Tile,
+        SHADER_Gouraud,
+        SHADER_Complex,
+        SHADER_Max
     };
     
-    enum BlendModes
+    enum BlendMode
     {
         BLEND_None,
         BLEND_Invisible,
@@ -370,6 +370,14 @@ class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
         BLEND_StraightAlpha,
         BLEND_PremultipliedAlpha,
         BLEND_Max
+    };
+    
+    enum DepthMode
+    {
+        DEPTH_Test_And_Write,
+        DEPTH_Test_No_Write,
+        DEPTH_No_Test_No_Write,
+        DEPTH_Max
     };
     
     // Metal vertex shaders all share the same argument table.
@@ -494,7 +502,7 @@ class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
         virtual void ActivateShader()
         {
             ActivePipelineState = nullptr;
-            RenDev->SetBlendMode(BLEND_None);
+            RenDev->SetBlendAndDepthMode(0);
             VertexBuffer.BindBuffer(RenDev->CommandEncoder);
             InstanceDataBuffer.BindBuffer(RenDev->CommandEncoder);
         }
@@ -534,7 +542,7 @@ class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
         }
     };
 
-    ShaderProgram* Shaders[Max_Prog]{};
+    ShaderProgram* Shaders[SHADER_Max]{};
     void ResetShaders();
     void RecompileShaders();
     void InitShaders();
@@ -603,8 +611,9 @@ class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
     };
     
     void SetProgram(INT Program);
-    void SetBlendMode(DWORD PolyFlags);
-    void SetDepthTesting(UBOOL Enabled);
+    DWORD FixPolyFlags(DWORD PolyFlags);
+    void SetBlendAndDepthMode(DWORD PolyFlags);
+    void SetDepthMode(DepthMode Mode);
     void SetTexture(INT TexNum, FTextureInfo& Info, DWORD PolyFlags, FLOAT PanBias);
     void SetProjection(FSceneNode* Frame, UBOOL bNearZ);
     void CreateDepthTexture();
@@ -653,9 +662,8 @@ class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
     BufferObject<GlobalUniforms>    GlobalUniformsBuffer;
     MTL::CommandQueue*              CommandQueue;
     MTL::Texture*                   DepthTexture;
-    MTL::DepthStencilState*         DepthStencilStateEnabled;
-    MTL::DepthStencilState*         DepthStencilStateDisabled;
-    BOOL                            DepthTestingEnabled;
+    MTL::DepthStencilState*         DepthStencilStates[DEPTH_Max];
+    DepthMode                       CurrentDepthMode;
     
     // Texture state
     typedef BYTE* (*ConversionFunc)(FTextureInfo&, DWORD, INT);
@@ -709,8 +717,6 @@ class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
     
     // Hack: When we detect the first draw call within PostRender, we clear the Z buffer so the weapon and HUD render on top of anything else
     BOOL                            DrawingWeapon;
-    
-    
 
 	//
 	// Helper functions

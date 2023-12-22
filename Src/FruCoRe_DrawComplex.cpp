@@ -44,17 +44,16 @@ static simd::float4 FVectorToFloat4(FVector& Vec)
 
 void UFruCoReRenderDevice::DrawComplexSurface(FSceneNode *Frame, FSurfaceInfo &Surface, FSurfaceFacet &Facet)
 {
-    SetProgram(Complex_Prog);
-    auto Shader = dynamic_cast<DrawComplexProgram*>(Shaders[Complex_Prog]);
-    
-    const auto PolyFlags = Surface.PolyFlags;
+    SetProgram(SHADER_Complex);
+    auto Shader = dynamic_cast<DrawComplexProgram*>(Shaders[SHADER_Complex]);
     
     if (!Shader->InstanceDataBuffer.CanBuffer(1))
         Shader->RotateBuffers();
     
     auto DrawData = Shader->InstanceDataBuffer.GetCurrentElementPtr();
     
-    SetBlendMode(PolyFlags);
+    const auto PolyFlags = FixPolyFlags(Surface.PolyFlags);
+    SetBlendAndDepthMode(PolyFlags);
     
     DrawData->DrawFlags = DF_DiffuseTexture;
     

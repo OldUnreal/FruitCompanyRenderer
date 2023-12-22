@@ -34,9 +34,9 @@ BYTE* P8ToRGBA8(FTextureInfo& Info, DWORD PolyFlags, INT MipLevel)
         Palette = LocalPal;
     }
     
-    auto Count = Info.USize * Info.VSize;
+    auto Mip = Info.Mips[MipLevel];
+    auto Count = Mip->USize * Mip->VSize;
     auto Ptr = new DWORD[Count];
-    auto Mip = Info.Mips[0];
     
     Info.Load();
     for (auto i = 0; i < Count; i++)
@@ -137,24 +137,32 @@ void UFruCoReRenderDevice::SetTexture(INT TexNum, FTextureInfo &Info, DWORD Poly
             TextureDescriptor->setStorageMode( MTL::StorageModeShared );
             TextureDescriptor->setUsage( MTL::ResourceUsageSample | MTL::ResourceUsageRead );
             TextureDescriptor->setPixelFormat(TextureFormat ? TextureFormat->MetalFormat : MTL::PixelFormatRGBA8Unorm);
+            TextureDescriptor->setMipmapLevelCount( Info.NumMips );
             
             MetalTexture = Device->newTexture(TextureDescriptor);
             TextureDescriptor->release();
         }
         
-        // Move the texture data into the Metal texture backing store
-        if (TextureFormat && TextureFormat->ConversionFunction)
-        {
-            TextureData = TextureFormat->ConversionFunction(Info, PolyFlags, 0);
-            bShouldDeleteTextureData = TRUE;
-        }
-        else
-        {
-            Info.Load();
-            TextureData = Info.Mips[0]->DataPtr;
-        }
+        Info.Load();
         
-        MetalTexture->replaceRegion(MTL::Region(0, 0, 0, Info.USize, Info.VSize, 1), 0, TextureData, Info.USize * TextureFormat->BlockSize);
+        for (INT MipLevel = 0; MipLevel < Info.NumMips; ++MipLevel)
+        {
+            auto VSize = Info.Mips[MipLevel]->VSize;
+            auto USize = Info.Mips[MipLevel]->USize;
+            
+            // Move the texture data into the Metal texture backing store
+            if (TextureFormat && TextureFormat->ConversionFunction)
+            {
+                TextureData = TextureFormat->ConversionFunction(Info, PolyFlags, MipLevel);
+                bShouldDeleteTextureData = TRUE;
+            }
+            else if (TextureFormat)
+            {
+                TextureData = Info.Mips[MipLevel]->DataPtr;
+            }
+            
+            MetalTexture->replaceRegion(MTL::Region(0, 0, 0, USize, VSize, 1), MipLevel, TextureData, USize * TextureFormat->BlockSize);
+        }
         
         Texture = &BindMap.Set(Info.CacheID, {Info.CacheID, MetalTexture, Info.Texture ? Info.Texture->RealtimeChangeCount : 0, 0.f, 0.f, 0.f, 0.f});
         
