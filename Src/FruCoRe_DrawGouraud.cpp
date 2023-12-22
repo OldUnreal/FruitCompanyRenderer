@@ -216,7 +216,7 @@ void UFruCoReRenderDevice::DrawGouraudProgram::PrepareDrawCall(FSceneNode* Frame
     Data->DrawFlags = NoNearZ ? DF_NoNearZ : DF_None;
     Data->PolyFlags = RenDev->FixPolyFlags(PolyFlags);
     
-    RenDev->SetBlendAndDepthMode(PolyFlags);
+    RenDev->SetBlendAndDepthMode(Data->PolyFlags);
 
     RenDev->SetTexture(0, Info, PolyFlags, 0.f);
     Data->DrawFlags |= DF_DiffuseTexture;

@@ -596,5 +596,5 @@ void UFruCoReRenderDevice::SetBlendAndDepthMode(DWORD PolyFlags)
         ActiveShader->ActivePipelineState = ActiveShader->PipelineStates[BlendMode];
     }
     
-    SetDepthMode((PolyFlags & PF_Occlude) == PF_Occlude ? DEPTH_Test_And_Write : DEPTH_Test_No_Write);
+    SetDepthMode(((PolyFlags & PF_Occlude) == PF_Occlude) ? DEPTH_Test_And_Write : DEPTH_Test_No_Write);
 }
