@@ -474,12 +474,8 @@ void UFruCoReRenderDevice::SetDepthMode(DepthMode Mode)
 MTL::Library* UFruCoReRenderDevice::GetShaderLibrary()
 {
     NS::Error* Error = nullptr;
-    MTL::Library* Library = nullptr;
-#if FRUCORE_SHADER_DEFAULT_LIBRARY
-    Library = Device->newDefaultLibrary();
-#else
-    Library = Device->newLibrary(NS::String::string("FruCoReShaders.metallib", NS::UTF8StringEncoding), &Error);
-#endif
+    auto Bundle = NS::Bundle::mainBundle();
+    auto Library = Bundle ? Device->newDefaultLibrary(Bundle, &Error) : Device->newDefaultLibrary();
     
     if (!Library)
     {
