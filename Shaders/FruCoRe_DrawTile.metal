@@ -27,7 +27,7 @@ vertex TileVertexOutput DrawTileVertex
     float4 InVertex  = Vertices[VertexID].Point;
     float4 Projected = Uniforms->ProjectionMatrix * InVertex;
     // Make sure that points _on_ the near plane have an NDC depth of 0
-    Projected.z -= Uniforms->zNear;
+    // Projected.z -= Uniforms->zNear;
     // The vertex is already in screen space coordinates. We just need to convert to clip space
     Result.Position = float4(
         -1.f + 2.f * InVertex.x / Uniforms->ViewportWidth,

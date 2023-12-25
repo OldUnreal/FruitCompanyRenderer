@@ -47,7 +47,7 @@ UBOOL UFruCoReRenderDevice::Init(UViewport* InViewport, INT NewX, INT NewY, INT 
         debugf(TEXT("Frucore: Failed to create device"));
         return FALSE;
     }
-    
+
 	debugf(NAME_DevGraphics, TEXT("Frucore: Created Device"));
     
     CreateDepthTexture();
@@ -70,6 +70,7 @@ UBOOL UFruCoReRenderDevice::Init(UViewport* InViewport, INT NewX, INT NewY, INT 
 
     InitShaders();
     
+    UseVSync = false;
     VolumetricLighting = true;
     HighDetailActors = true;
     UseLightmapAtlas = true;
@@ -141,7 +142,7 @@ void UFruCoReRenderDevice::Flush(INT AllowPrecache)
 }
 
 /*-----------------------------------------------------------------------------
-	Package Registration
+	Exec
 -----------------------------------------------------------------------------*/
 UBOOL UFruCoReRenderDevice::Exec(const TCHAR* Cmd, FOutputDevice& Ar)
 {
@@ -362,7 +363,7 @@ void UFruCoReRenderDevice::SetProjection(FSceneNode *Frame, UBOOL bNearZ)
     
     debugf(TEXT("Frucore: Set projection matrix"));
     
-    if (!DepthTexture)
+    if (!DepthTexture || DepthTexture->width() < Frame->FX || DepthTexture->height() < Frame->FY)
         CreateDepthTexture();
 }
 
@@ -379,8 +380,8 @@ void UFruCoReRenderDevice::CreateDepthTexture()
     }
     
     auto DrawableSize = Layer->drawableSize();
-    auto Width = StoredFX > 0 ? StoredFX : DrawableSize.width;
-    auto Height = StoredFY > 0 ? StoredFY : DrawableSize.height;
+    auto Width = DrawableSize.width;
+    auto Height = DrawableSize.height;
     MTL::TextureDescriptor* DepthTextureDescriptor = MTL::TextureDescriptor::texture2DDescriptor(MTL::PixelFormatDepth32Float, Width, Height, false);
     
     // Store on the GPU. We're not going to do anything fancy with this on the CPU
@@ -424,6 +425,7 @@ void UFruCoReRenderDevice::CreateCommandEncoder(MTL::CommandBuffer *Buffer, bool
         DepthAttachment->setLoadAction(MTL::LoadAction::LoadActionLoad);
         DepthAttachment->setStoreAction(MTL::StoreAction::StoreActionStore);
     }
+    
     DepthAttachment->setTexture(DepthTexture);
     DepthAttachment->setClearDepth(1);
     
@@ -439,6 +441,10 @@ void UFruCoReRenderDevice::CreateCommandEncoder(MTL::CommandBuffer *Buffer, bool
     CommandEncoder->setCullMode(MTL::CullModeBack);
     CommandEncoder->setFrontFacingWinding(MTL::Winding::WindingClockwise);
     
+    //debugf(TEXT("Frucore: Setting Metal Viewport - Origin:[%f,%f] - Resolution:%fx%f - Layer Resolution:%fx%f"),
+    //       StoredOriginX, StoredOriginY, StoredFX, StoredFY,
+    //       Layer->drawableSize().width, Layer->drawableSize().height);
+    
     MTL::Viewport MetalViewport;
     MetalViewport.originX = StoredOriginX;
     MetalViewport.originY = StoredOriginY;
@@ -446,7 +452,6 @@ void UFruCoReRenderDevice::CreateCommandEncoder(MTL::CommandBuffer *Buffer, bool
     MetalViewport.znear = 0.0;
     MetalViewport.width = StoredFX;
     MetalViewport.height = StoredFY;
-    
     CommandEncoder->setViewport(MetalViewport);
 
     GlobalUniformsBuffer.BindBuffer(CommandEncoder);
