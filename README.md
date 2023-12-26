@@ -14,7 +14,6 @@ This renderer builds and can be used in game. The following features are current
 
 The following features are not implemented (yet):
 
-* Resolution switching
 * Editor support
 * Line rendering
 

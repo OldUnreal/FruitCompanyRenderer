@@ -25,6 +25,48 @@ static NS::String* FStringToNSString(FString& Str)
 }
 
 /*-----------------------------------------------------------------------------
+    StaticConstructor
+-----------------------------------------------------------------------------*/
+void UFruCoReRenderDevice::StaticConstructor()
+{
+    // Register renderer options
+    new(GetClass(),TEXT("UseVSync"), RF_Public)UBoolProperty(CPP_PROPERTY(UseVSync), TEXT("Options"), CPF_Config);
+    new(GetClass(),TEXT("MacroTextures"), RF_Public)UBoolProperty(CPP_PROPERTY(MacroTextures), TEXT("Options"), CPF_Config );
+    
+    // Generic RenderDevice settings
+    VolumetricLighting = true;
+    HighDetailActors = true;
+    DetailTextures = true;
+    SupportsFogMaps = true;
+    Coronas = true;
+    SupportsTC = true;
+    
+    // 469-specific RenderDevice settings
+#if UNREAL_TOURNAMENT_OLDUNREAL
+    UseLightmapAtlas = true;
+#endif
+    
+    // Frucore-specific settings
+    UseVSync = false;
+    MacroTextures = true;
+}
+
+/*-----------------------------------------------------------------------------
+    ShutdownAfterError
+-----------------------------------------------------------------------------*/
+void UFruCoReRenderDevice::ShutdownAfterError()
+{
+}
+
+/*-----------------------------------------------------------------------------
+    PostEditChange
+-----------------------------------------------------------------------------*/
+void UFruCoReRenderDevice::PostEditChange()
+{
+    // TODO: Should we reload and respecialize the shaders?
+}
+
+/*-----------------------------------------------------------------------------
 	Init
 -----------------------------------------------------------------------------*/
 UBOOL UFruCoReRenderDevice::Init(UViewport* InViewport, INT NewX, INT NewY, INT NewColorBytes, UBOOL Fullscreen)
@@ -69,16 +111,6 @@ UBOOL UFruCoReRenderDevice::Init(UViewport* InViewport, INT NewX, INT NewY, INT 
     RegisterTextureFormats();
 
     InitShaders();
-    
-    UseVSync = false;
-    VolumetricLighting = true;
-    HighDetailActors = true;
-    UseLightmapAtlas = true;
-    DetailTextures = true;
-    MacroTextures = true;
-    SupportsFogMaps = true;
-    Coronas = true;
-    SupportsTC = true;
 
 	// Great success
 	return TRUE;
@@ -331,8 +363,6 @@ void UFruCoReRenderDevice::SetProjection(FSceneNode *Frame, UBOOL bNearZ)
     FLOAT Aspect = Frame->FX / Frame->FY;
     FLOAT FovTan = appTan(Viewport->Actor->FovAngle * PI / 360.f);
     FLOAT InvFovTan = 1.f / FovTan;
-    RFX2 = 2.0 * FovTan / Frame->FX;
-    RFY2 = 2.0 * FovTan / (Frame->FY * Aspect);
     
     GlobalUniforms->ProjectionMatrix = simd_matrix_from_rows(
         (simd::float4){ InvFovTan, 0.f, 0.f, 0.f },

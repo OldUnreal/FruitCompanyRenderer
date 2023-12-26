@@ -610,18 +610,16 @@ class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
         }
     };
     
-    void SetProgram(INT Program);
-    DWORD FixPolyFlags(DWORD PolyFlags);
-    void SetBlendAndDepthMode(DWORD PolyFlags);
-    void SetDepthMode(DepthMode Mode);
-    void SetTexture(INT TexNum, FTextureInfo& Info, DWORD PolyFlags, FLOAT PanBias);
-    void SetProjection(FSceneNode* Frame, UBOOL bNearZ);
-    void CreateDepthTexture();
-    void RegisterTextureFormats();
-    void CreateCommandEncoder(MTL::CommandBuffer* Buffer, bool ClearDepthBuffer=true, bool ClearColorBuffer=true);
-    MTL::Library* GetShaderLibrary();
+    //
+    // UObject interface
+    //
+    void StaticConstructor();
+    void PostEditChange();
+    void ShutdownAfterError();
 
-	// URenderDevice interface.
+    //
+	// URenderDevice interface
+    //
 	UBOOL Init(UViewport* InViewport, INT NewX, INT NewY, INT NewColorBytes, UBOOL Fullscreen);
 	UBOOL SetRes(INT NewX, INT NewY, INT NewColorBytes, UBOOL Fullscreen ); 
 	void Exit();
@@ -652,6 +650,20 @@ class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
     
     // 227 interface
     void DrawGouraudPolyList(FSceneNode* Frame, FTextureInfo& Info, FTransTexture* Pts, INT NumPts, DWORD PolyFlags, FSpanBuffer* Span);
+    
+    //
+    // Renderer-specific functions
+    //
+    void SetProgram(INT Program);
+    DWORD FixPolyFlags(DWORD PolyFlags);
+    void SetBlendAndDepthMode(DWORD PolyFlags);
+    void SetDepthMode(DepthMode Mode);
+    void SetTexture(INT TexNum, FTextureInfo& Info, DWORD PolyFlags, FLOAT PanBias);
+    void SetProjection(FSceneNode* Frame, UBOOL bNearZ);
+    void CreateDepthTexture();
+    void RegisterTextureFormats();
+    void CreateCommandEncoder(MTL::CommandBuffer* Buffer, bool ClearDepthBuffer=true, bool ClearColorBuffer=true);
+    MTL::Library* GetShaderLibrary();
 
 //private:
     // Persistent state
@@ -699,11 +711,7 @@ class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
     FLOAT                           StoredFY; // Viewport height
     FLOAT                           StoredOriginX;
     FLOAT                           StoredOriginY;
-    
-    // Projection state for DrawTile and friends
-    FLOAT                           RFX2;
-    FLOAT                           RFY2;
-    
+
     // Depth info
     FLOAT                           zNear;
     FLOAT                           zFar;
