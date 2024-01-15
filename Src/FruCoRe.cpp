@@ -468,7 +468,7 @@ void UFruCoReRenderDevice::CreateCommandEncoder(MTL::CommandBuffer *Buffer, bool
     
     CommandEncoder = CommandBuffer->renderCommandEncoder(PassDescriptor);
     CommandEncoder->setDepthStencilState(DepthStencilStates[CurrentDepthMode]);
-    CommandEncoder->setCullMode(MTL::CullModeBack);
+    CommandEncoder->setCullMode(MTL::CullModeNone);
     CommandEncoder->setFrontFacingWinding(MTL::Winding::WindingClockwise);
     
     //debugf(TEXT("Frucore: Setting Metal Viewport - Origin:[%f,%f] - Resolution:%fx%f - Layer Resolution:%fx%f"),
