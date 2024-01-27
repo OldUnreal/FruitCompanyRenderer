@@ -94,8 +94,8 @@ void UFruCoReRenderDevice::SetTexture(INT TexNum, FTextureInfo &Info, DWORD Poly
 
 #if UNREAL_TOURNAMENT_OLDUNREAL
     if (Texture && !Info.NeedsRealtimeUpdate(Texture->RealTimeChangeCount))
-#elif ENGINE_VERSION==227
-	if (Texture && (!Info.bRealtimeChanged || Info.RenderTag != Texture->RealTimeChangeCount))
+//#elif ENGINE_VERSION==227
+//	if (Texture && (!Info.bRealtimeChanged || Info.RenderTag != Texture->RealTimeChangeCount))
 #else
 	if (Texture && !Info.bRealtimeChanged)
 #endif
@@ -106,10 +106,6 @@ void UFruCoReRenderDevice::SetTexture(INT TexNum, FTextureInfo &Info, DWORD Poly
     else
     {
         Shaders[ActiveProgram]->Flush();
-
-#if ENGINE_VERSION==227
-		Texture->RealTimeChangeCount = Info.RenderTag;
-#endif
 		
 #if !UNREAL_TOURNAMENT_OLDUNREAL
 		Info.bRealtimeChanged = false;
@@ -193,7 +189,11 @@ void UFruCoReRenderDevice::SetTexture(INT TexNum, FTextureInfo &Info, DWORD Poly
 								0.f,
 								0.f}
 			);
-        
+
+#if ENGINE_VERSION==227
+		Texture->RealTimeChangeCount = Info.RenderTag;
+#endif
+		
         if (bShouldDeleteTextureData)
             delete[] TextureData;
     }
