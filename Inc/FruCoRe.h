@@ -35,10 +35,16 @@
 #define DRAWSIMPLE_INSTANCEDATA_SIZE 128
 #define NUMBUFFERS 3
 
+#if UNREAL_TOURNAMENT_OLDUNREAL
 class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
 {
 	DECLARE_CLASS(UFruCoReRenderDevice,URenderDeviceOldUnreal469,CLASS_Config,FruCoRe);
-    
+#else
+class UFruCoReRenderDevice : public URenderDevice
+{
+	DECLARE_CLASS(UFruCoReRenderDevice,URenderDevice,CLASS_Config,FruCoRe);
+#endif
+	
     //
     // Renderer Options
     //

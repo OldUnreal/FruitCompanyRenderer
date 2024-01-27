@@ -29,9 +29,23 @@ static void SetTextureHelper
     RenDev->SetTexture(TexNum, Info, PolyFlags, PanBias);
     const auto Texture = RenDev->BoundTextures[TexNum];
     if (TextureCoords)
-        *TextureCoords = simd::make_float4(Texture->UMult, Texture->VMult, Texture->UPan, Texture->VPan);
+	{
+        *TextureCoords = simd::make_float4(Texture->UMult,
+										   Texture->VMult,
+										   Texture->UPan,
+										   Texture->VPan);
+	}
     if (TextureInfo && Info.Texture)
-        *TextureInfo = simd::make_float4(Info.Texture->Diffuse, Info.Texture->Specular, Info.Texture->Alpha, Info.Texture->Scale);
+	{
+        *TextureInfo = simd::make_float4(Info.Texture->Diffuse,
+										 Info.Texture->Specular,
+										 Info.Texture->Alpha,
+#if ENGINE_VERSION==227
+										 Info.Texture->DrawScale);
+#else
+										 Info.Texture->Scale);
+#endif
+	}
 }
 
 /*-----------------------------------------------------------------------------
