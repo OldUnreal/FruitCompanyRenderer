@@ -267,13 +267,7 @@ void UFruCoReRenderDevice::DrawStats(FSceneNode* Frame)
 -----------------------------------------------------------------------------*/
 void UFruCoReRenderDevice::SetSceneNode(FSceneNode* Frame)
 {
-    if (StoredFovAngle != Frame->Viewport->Actor->FovAngle ||
-        StoredFX != Frame->FX ||
-        StoredFY != Frame->FY ||
-        StoredOriginX != Frame->XB ||
-        StoredOriginY != Frame->YB ||
-        StoredBrightness != Frame->Viewport->GetOuterUClient()->Brightness)
-        SetProjection(Frame, 0);
+    SetProjection(Frame, 0);
 }
 
 /*-----------------------------------------------------------------------------
@@ -334,14 +328,27 @@ void UFruCoReRenderDevice::SetProgram(INT Program)
 -----------------------------------------------------------------------------*/
 void UFruCoReRenderDevice::SetProjection(FSceneNode *Frame, UBOOL bNearZ)
 {
-    // If we're doing this in the middle of a frame, we need to switch to a 
+    const auto ChangedUniforms = 
+        (StoredFovAngle != Frame->Viewport->Actor->FovAngle ||
+         StoredBrightness != Frame->Viewport->GetOuterUClient()->Brightness);
+    const auto ChangedViewportBounds =
+        (StoredFX != Frame->FX ||
+         StoredFY != Frame->FY ||
+         StoredOriginX != Frame->XB ||
+         StoredOriginY != Frame->YB);
+    
+    if (!ChangedUniforms && !ChangedViewportBounds)
+        return;
+    
+    // If we're doing this in the middle of a frame, we need to switch to a
     // different buffer. This way, all of our in-flight draw calls will still
     // use the old projection matrix and uniforms
     auto OldProgram = ActiveProgram;
     if (CommandEncoder)
     {
         SetProgram(SHADER_None);
-        GlobalUniformsBuffer.Rotate(Device);
+        GlobalUniformsBuffer.Signal(CommandBuffer);
+        GlobalUniformsBuffer.Rotate(Device, CommandEncoder);
         GlobalUniformsBuffer.Advance(1);
     }
     
@@ -382,16 +389,20 @@ void UFruCoReRenderDevice::SetProjection(FSceneNode *Frame, UBOOL bNearZ)
     GlobalUniforms->zFar = zFar;
     GlobalUniforms->Gamma = StoredBrightness;
     GlobalUniforms->DetailMax = 2;
-    
-    if (CommandEncoder)
-    {
-        CommandEncoder->endEncoding();
-        CreateCommandEncoder(CommandBuffer, false, false);
-        SetProgram(OldProgram);
-    }
         
     // Push to the GPU
     GlobalUniformsBuffer.BufferData(true);
+    
+    if (CommandEncoder)
+    {
+        if (ChangedViewportBounds)
+        {
+            CommandEncoder->endEncoding();
+            CommandEncoder->release();
+            CreateCommandEncoder(CommandBuffer, false, false);
+        }
+        SetProgram(OldProgram);
+    }
     
     // debugf(TEXT("Frucore: Set projection matrix"));
     
@@ -485,10 +496,11 @@ void UFruCoReRenderDevice::CreateCommandEncoder(MTL::CommandBuffer *Buffer, bool
     MetalViewport.width = StoredFX;
     MetalViewport.height = StoredFY;
     CommandEncoder->setViewport(MetalViewport);
+    
+    GlobalUniformsBuffer.BindBuffer(CommandEncoder);
+    
     if (ActivePipelineState)
         CommandEncoder->setRenderPipelineState(ActivePipelineState);
-
-    GlobalUniformsBuffer.BindBuffer(CommandEncoder);
 }
 
 /*-----------------------------------------------------------------------------
