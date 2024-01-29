@@ -198,7 +198,7 @@ void UFruCoReRenderDevice::SetTexture(INT TexNum, FTextureInfo &Info, DWORD Poly
             delete[] TextureData;
     }
     
-    //if (BoundTextures[TexNum] != Texture)
+    if (BoundTextures[TexNum] != Texture)
     {
         CommandEncoder->setFragmentTexture(Texture->Texture, TexNum);
         BoundTextures[TexNum] = Texture;
