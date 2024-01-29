@@ -392,7 +392,7 @@ void UFruCoReRenderDevice::SetProjection(FSceneNode *Frame, UBOOL bNearZ)
     // Push to the GPU
     GlobalUniformsBuffer.BufferData(true);
     
-    debugf(TEXT("Frucore: Set projection matrix"));
+    // debugf(TEXT("Frucore: Set projection matrix"));
     
     if (!DepthTexture || DepthTexture->width() < Frame->FX || DepthTexture->height() < Frame->FY)
         CreateDepthTexture();
