@@ -227,8 +227,12 @@ void UFruCoReRenderDevice::DrawGouraudProgram::PrepareDrawCall(FSceneNode* Frame
 
     if (Info.Texture && Info.Texture->DetailTexture && RenDev->DetailTextures)
     {
+#if ENGINE_VERSION==227
+		DetailTextureInfo = *Info.Texture->DetailTexture->GetTexture(INDEX_NONE, RenDev);
+#else
         Info.Texture->DetailTexture->Lock(DetailTextureInfo, Frame->Viewport->CurrentTime, -1, RenDev);
         RenDev->SetTexture(IDX_DetailTexture, DetailTextureInfo, PolyFlags, 0.f);
+#endif
         Data->DetailMacroInfo[0] = RenDev->BoundTextures[1]->UMult;
         Data->DetailMacroInfo[1] = RenDev->BoundTextures[1]->VMult;
         LastShaderOptions |= OPT_DetailTexture;
@@ -236,8 +240,12 @@ void UFruCoReRenderDevice::DrawGouraudProgram::PrepareDrawCall(FSceneNode* Frame
 
     if (Info.Texture && Info.Texture->MacroTexture && RenDev->MacroTextures)
     {
+#if ENGINE_VERSION==227
+		MacroTextureInfo = *Info.Texture->MacroTexture->GetTexture(INDEX_NONE, RenDev);
+#else
         Info.Texture->MacroTexture->Lock(MacroTextureInfo, Frame->Viewport->CurrentTime, -1, RenDev);
         RenDev->SetTexture(IDX_MacroTexture, MacroTextureInfo, PolyFlags, 0.f);
+#endif
         Data->DetailMacroInfo[2] = RenDev->BoundTextures[2]->UMult;
         Data->DetailMacroInfo[3] = RenDev->BoundTextures[2]->VMult;
         LastShaderOptions |= OPT_MacroTexture;
@@ -250,12 +258,13 @@ void UFruCoReRenderDevice::DrawGouraudProgram::PrepareDrawCall(FSceneNode* Frame
 void UFruCoReRenderDevice::DrawGouraudProgram::FinishDrawCall(FTextureInfo& Info)
 {
     GouraudInstanceData* Data = InstanceDataBuffer.GetCurrentElementPtr();
-    
+#if ENGINE_VERSION!=227
     if (LastShaderOptions & OPT_DetailTexture)
         Info.Texture->DetailTexture->Unlock(DetailTextureInfo);
 
     if (LastShaderOptions & OPT_MacroTexture)
         Info.Texture->MacroTexture->Unlock(MacroTextureInfo);
+#endif
 }
 
 void UFruCoReRenderDevice::DrawGouraudProgram::PushClipPlane(const FPlane &ClipPlane)
