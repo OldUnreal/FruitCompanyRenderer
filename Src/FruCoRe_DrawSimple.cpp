@@ -70,3 +70,11 @@ void UFruCoReRenderDevice::EndFlash()
     Shader->InstanceDataBuffer.Advance(1);
     Shader->DrawBuffer.EndDrawCall(6);
 }
+
+/*-----------------------------------------------------------------------------
+    BuildCommonPipelineStates
+-----------------------------------------------------------------------------*/
+void UFruCoReRenderDevice::DrawSimpleTriangleProgram::BuildCommonPipelineStates()
+{
+    SelectPipelineState(BLEND_None, OPT_None);
+}

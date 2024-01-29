@@ -276,3 +276,13 @@ void UFruCoReRenderDevice::DrawGouraudProgram::PopClipPlane()
 {
     // TODO: Implement Me!
 }
+
+/*-----------------------------------------------------------------------------
+    BuildCommonPipelineStates
+-----------------------------------------------------------------------------*/
+void UFruCoReRenderDevice::DrawGouraudProgram::BuildCommonPipelineStates()
+{
+    SelectPipelineState(BLEND_None, OPT_None);
+    SelectPipelineState(BLEND_None, OPT_Modulated);
+    SelectPipelineState(BLEND_None, OPT_RenderFog);
+}

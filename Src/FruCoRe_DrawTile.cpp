@@ -75,3 +75,14 @@ void UFruCoReRenderDevice::DrawTile(FSceneNode* Frame, FTextureInfo& Info, FLOAT
     Shader->InstanceDataBuffer.Advance(1);
     Shader->DrawBuffer.EndDrawCall(6);
 }
+
+/*-----------------------------------------------------------------------------
+    BuildCommonPipelineStates
+-----------------------------------------------------------------------------*/
+void UFruCoReRenderDevice::DrawTileProgram::BuildCommonPipelineStates()
+{
+    SelectPipelineState(BLEND_None, OPT_None);
+    SelectPipelineState(BLEND_None, OPT_Masked);
+    SelectPipelineState(BLEND_None, OPT_Modulated);
+    SelectPipelineState(BLEND_None, OPT_AlphaBlended);
+}

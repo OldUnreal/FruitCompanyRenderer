@@ -444,8 +444,11 @@ class UFruCoReRenderDevice : public URenderDevice
         // Shader-specific functions
         //
         
-        // Builds the shaders and creates buffers and pipeline states
+        // Builds the shaders and pipeline states
         virtual void BuildCommonPipelineStates() = 0;
+        
+        // Creates the vertex and instance data buffers
+        virtual void InitializeBuffers() = 0;
         
         // Retrieves the specialized pipeline state for the given options. If the desired state does not exist, this function should create it on-the-fly
         virtual void SelectPipelineState(BlendMode Mode, ShaderOptions Options) = 0;
@@ -509,15 +512,10 @@ class UFruCoReRenderDevice : public URenderDevice
             }
         }
         
-        virtual void BuildCommonPipelineStates()
+        virtual void InitializeBuffers()
         {
-            // TODO: Build commonly used states here so we don't get too many frame drops due to on-the-fly compilation
-            
-            // Build buffers
-            if (VertexBuffer.Size() == 0)
-                VertexBuffer.Initialize(VertexBufferSize, RenDev->Device, VertexBufferBindingIndex);
-            if (InstanceDataBuffer.Size() == 0)
-                InstanceDataBuffer.Initialize(InstanceDataBufferSize, RenDev->Device, InstanceDataBufferBindingIndex);
+            VertexBuffer.Initialize(VertexBufferSize, RenDev->Device, VertexBufferBindingIndex);
+            InstanceDataBuffer.Initialize(InstanceDataBufferSize, RenDev->Device, InstanceDataBufferBindingIndex);
         }
 
         // Builds the shaders and creates buffers and pipeline states
@@ -632,6 +630,8 @@ class UFruCoReRenderDevice : public URenderDevice
             this->VertexFunctionName = _VertexFunctionName;
             this->FragmentFunctionName = _FragmentFunctionName;
         }
+        
+        virtual void BuildCommonPipelineStates();
     };
     
     class DrawGouraudProgram : public ShaderProgramImpl<GouraudVertex, GouraudInstanceData, DRAWGOURAUD_VERTEXBUFFER_SIZE, IDX_DrawGouraudVertexData, DRAWGOURAUD_INSTANCEDATA_SIZE, IDX_DrawGouraudInstanceData>
@@ -650,6 +650,8 @@ class UFruCoReRenderDevice : public URenderDevice
         void PushClipPlane(const FPlane& ClipPlane);
         void PopClipPlane();
         
+        virtual void BuildCommonPipelineStates();
+        
         DWORD LastShaderOptions{};
         FTextureInfo DetailTextureInfo{};
         FTextureInfo MacroTextureInfo{};
@@ -665,6 +667,8 @@ class UFruCoReRenderDevice : public URenderDevice
             this->VertexFunctionName = _VertexFunctionName;
             this->FragmentFunctionName = _FragmentFunctionName;
         }
+        
+        virtual void BuildCommonPipelineStates();
     };
     
     class DrawSimpleTriangleProgram : public ShaderProgramImpl<SimpleTriangleVertex, SimpleTriangleInstanceData, DRAWSIMPLE_VERTEXBUFFER_SIZE, IDX_DrawSimpleTriangleVertexData, DRAWSIMPLE_INSTANCEDATA_SIZE, IDX_DrawSimpleTriangleInstanceData>
@@ -677,6 +681,8 @@ class UFruCoReRenderDevice : public URenderDevice
             this->VertexFunctionName = _VertexFunctionName;
             this->FragmentFunctionName = _FragmentFunctionName;
         }
+        
+        virtual void BuildCommonPipelineStates();
     };
     
     //

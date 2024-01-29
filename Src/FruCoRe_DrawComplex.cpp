@@ -146,3 +146,20 @@ void UFruCoReRenderDevice::DrawComplexSurface(FSceneNode *Frame, FSurfaceInfo &S
     Shader->DrawBuffer.EndDrawCall(FacetVertexCount);
     Shader->InstanceDataBuffer.Advance(1);
 }
+
+/*-----------------------------------------------------------------------------
+    BuildCommonPipelineStates
+-----------------------------------------------------------------------------*/
+void UFruCoReRenderDevice::DrawComplexProgram::BuildCommonPipelineStates()
+{
+    SelectPipelineState(BLEND_None, OPT_None);
+    SelectPipelineState(BLEND_None, OPT_Masked);
+    SelectPipelineState(BLEND_None, OPT_LightMap);
+    SelectPipelineState(BLEND_None, static_cast<ShaderOptions>(OPT_LightMap|OPT_Masked));
+    SelectPipelineState(BLEND_None, static_cast<ShaderOptions>(OPT_LightMap|OPT_FogMap));
+    SelectPipelineState(BLEND_None, static_cast<ShaderOptions>(OPT_LightMap|OPT_FogMap|OPT_Masked));
+    SelectPipelineState(BLEND_None, OPT_DetailTexture);
+    SelectPipelineState(BLEND_None, static_cast<ShaderOptions>(OPT_DetailTexture|OPT_LightMap));
+    SelectPipelineState(BLEND_None, static_cast<ShaderOptions>(OPT_DetailTexture|OPT_LightMap|OPT_FogMap));
+    SelectPipelineState(BLEND_None, static_cast<ShaderOptions>(OPT_DetailTexture|OPT_MacroTexture|OPT_LightMap));
+}

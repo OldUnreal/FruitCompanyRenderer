@@ -132,6 +132,7 @@ void UFruCoReRenderDevice::InitShaders()
             continue;
         
         Shader->BuildCommonPipelineStates();
+        Shader->InitializeBuffers();
     }
 }
 
