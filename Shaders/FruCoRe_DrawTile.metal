@@ -11,16 +11,15 @@ typedef struct
     float4 Position [[position]];
     float4 DrawColor;
     float2 UV;
-    unsigned int PolyFlags;
 } TileVertexOutput;
 
 vertex TileVertexOutput DrawTileVertex
 (
     uint VertexID [[vertex_id]],
     uint InstanceID [[instance_id]],
-    device const GlobalUniforms* Uniforms [[buffer(0)]],
-    device const TileInstanceData* Data [[buffer(1)]],
-    device const TileVertex* Vertices [[buffer(2)]]
+    device const GlobalUniforms* Uniforms   [[ buffer(IDX_Uniforms)             ]],
+    device const TileInstanceData* Data     [[ buffer(IDX_DrawTileInstanceData) ]],
+    device const TileVertex* Vertices       [[ buffer(IDX_DrawTileVertexData)   ]]
 )
 {
     TileVertexOutput Result;
@@ -40,22 +39,21 @@ vertex TileVertexOutput DrawTileVertex
         Vertices[VertexID].UV.y * Data[InstanceID].VMult
     );
     Result.DrawColor = Data[InstanceID].DrawColor;
-    Result.PolyFlags = Data[InstanceID].PolyFlags;
     return Result;
 }
 
 float4 fragment DrawTileFragment
 (
     TileVertexOutput in [[stage_in]],
-    texture2d< float, access::sample > tex [[texture(0)]],
-    device const GlobalUniforms* Uniforms [[buffer(0)]]
+    texture2d< float, access::sample > tex  [[ texture(IDX_DiffuseTexture) ]],
+    device const GlobalUniforms* Uniforms   [[ buffer(IDX_Uniforms)        ]]
 )
 {
     constexpr sampler s( address::repeat, filter::linear );
-    float4 Color = ApplyPolyFlags(tex.sample(s, in.UV).rgba, float4(1.0), in.PolyFlags);
+    float4 Color = ApplyPolyFlags(tex.sample(s, in.UV).rgba, float4(1.0));
     float4 TotalColor = Color * in.DrawColor;
     
-    if ((in.PolyFlags & PF_Modulated) != PF_Modulated)
+    if (!IsModulated)
         TotalColor = GammaCorrect(Uniforms->Gamma, TotalColor);
     
     return TotalColor;

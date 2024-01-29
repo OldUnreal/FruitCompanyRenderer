@@ -20,12 +20,10 @@ static void SetTextureHelper
     FTextureInfo &Info,
     DWORD PolyFlags,
     FLOAT PanBias,
-    DWORD DrawFlag,
     simd::float4 *TextureCoords = nullptr,
     simd::float4 *TextureInfo = nullptr
 )
 {
-    Data->DrawFlags |= DrawFlag;
     RenDev->SetTexture(TexNum, Info, PolyFlags, PanBias);
     const auto Texture = RenDev->BoundTextures[TexNum];
     if (TextureCoords)
@@ -52,32 +50,43 @@ void UFruCoReRenderDevice::DrawComplexSurface(FSceneNode *Frame, FSurfaceInfo &S
     
     auto DrawData = Shader->InstanceDataBuffer.GetCurrentElementPtr();
     
-    const auto PolyFlags = FixPolyFlags(Surface.PolyFlags);
-    SetBlendAndDepthMode(PolyFlags);
-    
-    DrawData->DrawFlags = DF_DiffuseTexture;
+    DWORD Options = OPT_None;
+    const auto PolyFlags = GetPolyFlags(Surface.PolyFlags, Options);
     
     // Bind all textures
-    SetTextureHelper(this, DrawData, 0, *Surface.Texture, PolyFlags, 0.0, DF_DiffuseTexture, &DrawData->DiffuseUV, &DrawData->DiffuseInfo);
+    SetTextureHelper(this, DrawData, IDX_DiffuseTexture, *Surface.Texture, PolyFlags, 0.0, &DrawData->DiffuseUV, &DrawData->DiffuseInfo);
     
     if (Surface.LightMap)
-        SetTextureHelper(this, DrawData, 1, *Surface.LightMap, PolyFlags, -0.5, DF_LightMap, &DrawData->LightMapUV);
+    {
+        SetTextureHelper(this, DrawData, IDX_LightMap, *Surface.LightMap, PolyFlags, -0.5, &DrawData->LightMapUV);
+        Options |= OPT_LightMap;
+    }
 
     if (Surface.FogMap)
-        SetTextureHelper(this, DrawData, 2, *Surface.FogMap, PF_Straight_AlphaBlend, -0.5, DF_FogMap, &DrawData->FogMapUV);
+    {
+        SetTextureHelper(this, DrawData, IDX_FogMap, *Surface.FogMap, PF_Straight_AlphaBlend, -0.5, &DrawData->FogMapUV);
+        Options |= OPT_FogMap;
+    }
     
     if (Surface.DetailTexture && DetailTextures)
-        SetTextureHelper(this, DrawData, 3, *Surface.DetailTexture, PolyFlags, 0.0, DF_DetailTexture, &DrawData->DetailUV);
+    {
+        SetTextureHelper(this, DrawData, IDX_DetailTexture, *Surface.DetailTexture, PolyFlags, 0.0, &DrawData->DetailUV);
+        Options |= OPT_DetailTexture;
+    }
 
     if (Surface.MacroTexture && MacroTextures)
-        SetTextureHelper(this, DrawData, 4, *Surface.MacroTexture, PolyFlags, 0.0, DF_MacroTexture, &DrawData->MacroUV, &DrawData->MacroInfo);
+    {
+        SetTextureHelper(this, DrawData, IDX_MacroTexture, *Surface.MacroTexture, PolyFlags, 0.0, &DrawData->MacroUV, &DrawData->MacroInfo);
+        Options |= OPT_MacroTexture;
+    }
         
     const auto FlatColor = Surface.FlatColor;
     DrawData->SurfaceXAxis = simd::make_float4(Facet.MapCoords.XAxis.X, Facet.MapCoords.XAxis.Y, Facet.MapCoords.XAxis.Z, Facet.MapCoords.XAxis | Facet.MapCoords.Origin);
     DrawData->SurfaceYAxis = simd::make_float4(Facet.MapCoords.YAxis.X, Facet.MapCoords.YAxis.Y, Facet.MapCoords.YAxis.Z, Facet.MapCoords.YAxis | Facet.MapCoords.Origin);
     DrawData->DrawColor = simd::make_float4(FlatColor.R, FlatColor.G, FlatColor.B, FlatColor.A);
-    DrawData->PolyFlags = PolyFlags;
 
+    Shader->SelectPipelineState(GetBlendMode(PolyFlags), static_cast<ShaderOptions>(Options));
+    SetDepthMode(((PolyFlags & PF_Occlude) == PF_Occlude) ? DEPTH_Test_And_Write : DEPTH_Test_No_Write);
     Shader->DrawBuffer.StartDrawCall();
     
     INT FacetVertexCount = 0;

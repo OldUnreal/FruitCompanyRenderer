@@ -105,7 +105,7 @@ UBOOL UFruCoReRenderDevice::Init(UViewport* InViewport, INT NewX, INT NewY, INT 
     DepthStencilDescriptor->release();
     
     // Create uniforms buffer
-    GlobalUniformsBuffer.Initialize(1, Device, BufferIndices::Uniforms, BufferIndices::Uniforms);
+    GlobalUniformsBuffer.Initialize(1, Device, IDX_Uniforms, IDX_Uniforms);
     GlobalUniformsBuffer.Advance(1);
     
     RegisterTextureFormats();
@@ -131,7 +131,7 @@ void UFruCoReRenderDevice::InitShaders()
         if (!Shader)
             continue;
         
-        Shader->BuildPipeline();        
+        Shader->BuildCommonPipelineStates();
     }
 }
 
@@ -226,12 +226,13 @@ void UFruCoReRenderDevice::ClearZ(FSceneNode* Frame)
     INT OldProgram = ActiveProgram;
     SetProgram(SHADER_None);
     
-    // This is kind of annoying. We can't simply switch to a different 
+    // This is kind of annoying. We can't simply switch to a different
     // DepthStencilState. Instead, we need to create a new command encoder
     // and have it clear the depth attachment
     CommandEncoder->endEncoding();
     CommandEncoder->release();
     CreateCommandEncoder(CommandBuffer, true, false);
+    
     SetProgram(OldProgram);
 }
 
@@ -328,14 +329,14 @@ void UFruCoReRenderDevice::SetProgram(INT Program)
 }
 
 /*-----------------------------------------------------------------------------
-    SetProgram
+    SetProjection
 -----------------------------------------------------------------------------*/
 void UFruCoReRenderDevice::SetProjection(FSceneNode *Frame, UBOOL bNearZ)
 {
     // If we're doing this in the middle of a frame, we need to switch to a 
     // different buffer. This way, all of our in-flight draw calls will still
     // use the old projection matrix and uniforms
-    INT OldProgram = ActiveProgram;
+    auto OldProgram = ActiveProgram;
     if (CommandEncoder)
     {
         SetProgram(SHADER_None);
@@ -464,7 +465,7 @@ void UFruCoReRenderDevice::CreateCommandEncoder(MTL::CommandBuffer *Buffer, bool
     StencilAttachment->setLoadAction(MTL::LoadAction::LoadActionClear);
     StencilAttachment->setStoreAction(MTL::StoreAction::StoreActionDontCare);
     StencilAttachment->setTexture(DepthTexture);
-    */
+    */ 
     
     CommandEncoder = CommandBuffer->renderCommandEncoder(PassDescriptor);
     CommandEncoder->setDepthStencilState(DepthStencilStates[CurrentDepthMode]);
@@ -483,6 +484,8 @@ void UFruCoReRenderDevice::CreateCommandEncoder(MTL::CommandBuffer *Buffer, bool
     MetalViewport.width = StoredFX;
     MetalViewport.height = StoredFY;
     CommandEncoder->setViewport(MetalViewport);
+    if (ActivePipelineState)
+        CommandEncoder->setRenderPipelineState(ActivePipelineState);
 
     GlobalUniformsBuffer.BindBuffer(CommandEncoder);
 }
@@ -526,6 +529,7 @@ MTL::Library* UFruCoReRenderDevice::GetShaderLibrary()
 -----------------------------------------------------------------------------*/
 void UFruCoReRenderDevice::ShaderProgram::BuildPipelineStates
 (
+    ShaderOptions Options,
     const TCHAR* Label,
     MTL::Function *VertexShader,
     MTL::Function *FragmentShader
@@ -570,24 +574,27 @@ void UFruCoReRenderDevice::ShaderProgram::BuildPipelineStates
         ColorAttachment->setSourceAlphaBlendFactor(BlendStates[i].SourceFactor);
         ColorAttachment->setDestinationAlphaBlendFactor(BlendStates[i].DestinationFactor);
         
-        FString PipelineLabel = FString::Printf(TEXT("%ls%ls"), Label, BlendStates[i].Name);
+        FString PipelineLabel = FString::Printf(TEXT("%ls%ls%ls"), Label, BlendStates[i].Name, *ShaderOptionsString(Options));
         NS::String* NSLabel = FStringToNSString(PipelineLabel);
         PipelineDescriptor->setLabel(NSLabel);
         
         NS::Error* Error = nullptr;
-        PipelineStates[BlendStates[i].BlendMode] = RenDev->Device->newRenderPipelineState( PipelineDescriptor, &Error );
-        if (!PipelineStates[BlendStates[i].BlendMode])
+        auto State = RenDev->Device->newRenderPipelineState( PipelineDescriptor, &Error );
+        if (!State)
         {
             PrintNSError(TEXT("Error creating pipeline states"), Error);
             return;
         }
+        
+        ShaderSpecializationKey Key = {BlendStates[i].BlendMode, Options};
+        PipelineStates.Set(Key, State);
     }
 }
 
 /*-----------------------------------------------------------------------------
-    FixPolyFlags
+    GetPolyFlags
 -----------------------------------------------------------------------------*/
-DWORD UFruCoReRenderDevice::FixPolyFlags(DWORD PolyFlags)
+DWORD UFruCoReRenderDevice::GetPolyFlags(DWORD PolyFlags, DWORD& Options)
 {
     if( (PolyFlags & (PF_RenderFog|PF_Translucent)) != PF_RenderFog )
         PolyFlags &= ~PF_RenderFog;
@@ -597,13 +604,40 @@ DWORD UFruCoReRenderDevice::FixPolyFlags(DWORD PolyFlags)
     else
         PolyFlags &= ~PF_Occlude;
     
+    // fast path. If no relevant polyflags have changed since our previous query, then just return the same ShaderOptions as last time
+    const DWORD RelevantPolyFlags = (PF_Modulated|PF_RenderFog|PF_Masked|PF_Straight_AlphaBlend|PF_Premultiplied_AlphaBlend);
+    if ((CachedPolyFlags&RelevantPolyFlags) ^ (PolyFlags&RelevantPolyFlags))
+    {
+        Options = OPT_None;
+        
+        if (PolyFlags & PF_Modulated)
+            Options |= OPT_Modulated;
+        
+        if (PolyFlags & PF_RenderFog)
+            Options |= OPT_RenderFog;
+        
+        if (PolyFlags & PF_Masked)
+            Options |= OPT_Masked;
+        
+        if (PolyFlags & (PF_Straight_AlphaBlend|PF_Premultiplied_AlphaBlend))
+            Options |= OPT_AlphaBlended;
+        
+        CachedPolyFlags = PolyFlags;
+        CachedShaderOptions = Options;
+    }
+    else
+    {
+        // nothing changed
+        Options = CachedShaderOptions;
+    }
+    
     return PolyFlags;
 }
 
 /*-----------------------------------------------------------------------------
-    SetBlendAndDepthMode
+    GetBlendMode
 -----------------------------------------------------------------------------*/
-void UFruCoReRenderDevice::SetBlendAndDepthMode(DWORD PolyFlags)
+UFruCoReRenderDevice::BlendMode UFruCoReRenderDevice::GetBlendMode(DWORD PolyFlags)
 {
     auto BlendMode = BLEND_None;
     if (PolyFlags & PF_Invisible)
@@ -618,14 +652,20 @@ void UFruCoReRenderDevice::SetBlendAndDepthMode(DWORD PolyFlags)
         BlendMode = BLEND_PremultipliedAlpha;
     else if (PolyFlags & PF_Masked)
         BlendMode = BLEND_Masked;
+    return BlendMode;
+}
+
+/*-----------------------------------------------------------------------------
+    SetPipelineState
+-----------------------------------------------------------------------------*/
+void UFruCoReRenderDevice::SetPipelineState(const MTL::RenderPipelineState *State)
+{
+    if (ActivePipelineState == State)
+        return;
     
-    const auto ActiveShader = Shaders[ActiveProgram];
-    if (ActiveShader->ActivePipelineState != ActiveShader->PipelineStates[BlendMode])
-    {
-        ActiveShader->Flush();
-        CommandEncoder->setRenderPipelineState(ActiveShader->PipelineStates[BlendMode]);
-        ActiveShader->ActivePipelineState = ActiveShader->PipelineStates[BlendMode];
-    }
+    if (Shaders[ActiveProgram])
+        Shaders[ActiveProgram]->Flush();
     
-    SetDepthMode(((PolyFlags & PF_Occlude) == PF_Occlude) ? DEPTH_Test_And_Write : DEPTH_Test_No_Write);
+    CommandEncoder->setRenderPipelineState(State);
+    ActivePipelineState = State;
 }

@@ -16,21 +16,18 @@ typedef struct
     float2 FogMapUV;
     float2 DetailUV;
     float2 MacroUV;
-    unsigned int PolyFlags;
-    unsigned int DrawFlags;
 } ComplexVertexOutput;
 
 vertex ComplexVertexOutput DrawComplexVertex
 (
-    uint VertexID [[vertex_id]],
-    uint InstanceID [[instance_id]],
-    device const GlobalUniforms* Uniforms [[buffer(0)]],
-    device const ComplexInstanceData* Data [[buffer(5)]],
-    device const ComplexVertex* Vertices [[buffer(6)]]
+    uint VertexID                           [[ vertex_id ]],
+    uint InstanceID                         [[ instance_id ]],
+    device const GlobalUniforms* Uniforms   [[ buffer(IDX_Uniforms)                  ]],
+    device const ComplexInstanceData* Data  [[ buffer(IDX_DrawComplexInstanceData)   ]],
+    device const ComplexVertex* Vertices    [[ buffer(IDX_DrawComplexVertexData)     ]]
 )
 {
     float4 InVertex = float4(Vertices[VertexID].Point.xyz, 1.0);
-    unsigned int DrawFlags = Data[InstanceID].DrawFlags;
 
     ComplexVertexOutput Result;
     Result.Position = Uniforms->ProjectionMatrix * InVertex;
@@ -47,28 +44,28 @@ vertex ComplexVertexOutput DrawComplexVertex
     float2 TexMapPan  = Data[InstanceID].DiffuseUV.zw;
     Result.DiffuseUV  = (MapDot - TexMapPan) * TexMapMult;
 
-    if (DrawFlags & DF_LightMap)
+    if (HasLightMap)
     {
         float2 LightMapMult = Data[InstanceID].LightMapUV.xy;
         float2 LightMapPan  = Data[InstanceID].LightMapUV.zw;
         Result.LightMapUV   = (MapDot - LightMapPan) * LightMapMult;
     }
 
-    if (DrawFlags & DF_FogMap)
+    if (HasFogMap)
     {
         float2 FogMapMult = Data[InstanceID].FogMapUV.xy;
         float2 FogMapPan  = Data[InstanceID].FogMapUV.zw;
         Result.FogMapUV   = (MapDot - FogMapPan) * FogMapMult;
     }
 
-    if (DrawFlags & DF_DetailTexture)
+    if (HasDetailTexture)
     {
         float2 DetailMult = Data[InstanceID].DetailUV.xy;
         float2 DetailPan  = Data[InstanceID].DetailUV.zw;
         Result.DetailUV   = (MapDot - DetailPan) * DetailMult;
     }
 
-    if (DrawFlags & DF_MacroTexture)
+    if (HasMacroTexture)
     {
         float2 MacroMult = Data[InstanceID].MacroUV.xy;
         float2 MacroPan  = Data[InstanceID].MacroUV.zw;
@@ -77,46 +74,42 @@ vertex ComplexVertexOutput DrawComplexVertex
 
     Result.DiffuseInfo = Data[InstanceID].DiffuseInfo.xz;
     Result.DrawColor = Data[InstanceID].DrawColor;
-    Result.PolyFlags = Data[InstanceID].PolyFlags;
-    Result.DrawFlags = Data[InstanceID].DrawFlags;
     return Result;
 }
 
 float4 fragment DrawComplexFragment
 (
     ComplexVertexOutput in [[stage_in]],
-    texture2d< float, access::sample > DiffuseTexture [[texture(0)]],
-    texture2d< float, access::sample > LightMap [[texture(1)]],
-    texture2d< float, access::sample > FogMap [[texture(2)]],
-    texture2d< float, access::sample > DetailTexture [[texture(3)]],
-    texture2d< float, access::sample > MacroTexture [[texture(4)]],
-    device const GlobalUniforms* Uniforms [[buffer(0)]]
+    texture2d< float, access::sample > DiffuseTexture   [[ texture(IDX_DiffuseTexture)                                      ]],
+    texture2d< float, access::sample > LightMap         [[ texture(IDX_LightMap)      , function_constant(HasLightMap)      ]],
+    texture2d< float, access::sample > FogMap           [[ texture(IDX_FogMap)        , function_constant(HasFogMap)        ]],
+    texture2d< float, access::sample > DetailTexture    [[ texture(IDX_DetailTexture) , function_constant(HasDetailTexture) ]],
+    texture2d< float, access::sample > MacroTexture     [[ texture(IDX_MacroTexture)  , function_constant(HasMacroTexture)  ]],
+    device const GlobalUniforms* Uniforms               [[ buffer(IDX_Uniforms)                                             ]]
 )
 {
     constexpr sampler s(address::repeat, filter::linear);
     float4 Color = DiffuseTexture.sample(s, in.DiffuseUV).rgba;
     
     // Diffuse factor
-    if (in.DiffuseInfo.x > 0.0)
-        Color *= in.DiffuseInfo.x;
+    //Color *= in.DiffuseInfo.x;
     
     // Alpha
-    if (in.DiffuseInfo.y > 0.0)
-        Color.a *= in.DiffuseInfo.y;
+    //Color.a *= in.DiffuseInfo.y;
     
-    Color = ApplyPolyFlags(Color, float4(1.0), in.PolyFlags);
+    Color = ApplyPolyFlags(Color, float4(1.0));
     
     float4 LightColor = float4(1.0, 1.0, 1.0, 1.0);
     float4 TotalColor = Color;
     
-    if (in.DrawFlags & DF_LightMap)
+    if (HasLightMap)
     {
         LightColor = LightMap.sample(s, in.LightMapUV).bgra;
         LightColor.rgb *= 255.0 / 127.0;
         LightColor.a = 1.0;
     }
     
-    if (in.DrawFlags & DF_DetailTexture)
+    if (HasDetailTexture)
     {
         float NearZ = in.Position.z / 512.0;
         float DetailScale = 1.0;
@@ -145,10 +138,10 @@ float4 fragment DrawComplexFragment
         }
     }
     
-    if (in.PolyFlags & DF_MacroTexture)
+    if (HasMacroTexture)
     {
         float4 MacroTexColor = MacroTexture.sample(s, in.MacroUV).rgba;
-        MacroTexColor = ApplyPolyFlags(MacroTexColor, float4(1.0), in.PolyFlags);
+        MacroTexColor = ApplyPolyFlags(MacroTexColor, float4(1.0));
         float3 hsvMacroTex = rgb2hsv(MacroTexColor.rgb);
         hsvMacroTex.b += (MacroTexColor.r - 0.1);
         hsvMacroTex = hsv2rgb(hsvMacroTex);
@@ -157,10 +150,10 @@ float4 fragment DrawComplexFragment
     }
     
     float4 FogColor = float4(0.0);
-    if (in.DrawFlags & DF_FogMap)
+    if (HasFogMap)
         FogColor = FogMap.sample(s, in.FogMapUV).rgba * 2.0;
     
-    if ((in.PolyFlags & PF_Modulated) != PF_Modulated)
+    if (!IsModulated)
         return GammaCorrect(Uniforms->Gamma * 1.7, TotalColor * LightColor + FogColor);
     
     return TotalColor + FogColor;

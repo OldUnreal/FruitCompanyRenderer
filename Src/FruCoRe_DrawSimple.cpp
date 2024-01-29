@@ -51,7 +51,7 @@ void UFruCoReRenderDevice::EndFlash()
     if (!Shader->VertexBuffer.CanBuffer(6) || !Shader->InstanceDataBuffer.CanBuffer(1))
         Shader->RotateBuffers();
     
-    SetBlendAndDepthMode(PF_Highlighted);
+    Shader->SelectPipelineState(GetBlendMode(PF_Highlighted), OPT_None);
     
     auto InstanceData = Shader->InstanceDataBuffer.GetCurrentElementPtr();
     InstanceData->DrawColor = simd::make_float4(FlashFog.X, FlashFog.Y, FlashFog.Z, 1.f - Min(FlashScale.X*2.f,1.f));

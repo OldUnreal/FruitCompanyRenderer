@@ -16,9 +16,9 @@ vertex SimpleTriangleVertexOutput DrawSimpleTriangleVertex
 (
     uint VertexID [[vertex_id]],
     uint InstanceID [[instance_id]],
-    device const GlobalUniforms* Uniforms [[buffer(0)]],
-    device const SimpleTriangleInstanceData* Data [[buffer(7)]],
-    device const SimpleTriangleVertex* Vertices [[buffer(8)]]
+    device const GlobalUniforms* Uniforms           [[ buffer(IDX_Uniforms)                       ]],
+    device const SimpleTriangleInstanceData* Data   [[ buffer(IDX_DrawSimpleTriangleInstanceData) ]],
+    device const SimpleTriangleVertex* Vertices     [[ buffer(IDX_DrawSimpleTriangleVertexData)   ]]
 )
 {
     SimpleTriangleVertexOutput Result;
@@ -45,9 +45,8 @@ vertex SimpleTriangleVertexOutput DrawSimpleTriangleVertex
 float4 fragment DrawSimpleTriangleFragment
 (
     SimpleTriangleVertexOutput in [[stage_in]],
-    device const GlobalUniforms* Uniforms [[buffer(0)]]
+    device const GlobalUniforms* Uniforms [[ buffer(IDX_Uniforms) ]]
 )
 {
     return GammaCorrect(Uniforms->Gamma * 1.7, in.DrawColor);
-    //return in.DrawColor;
 }

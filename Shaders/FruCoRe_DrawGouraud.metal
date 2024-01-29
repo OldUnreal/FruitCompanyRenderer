@@ -16,17 +16,15 @@ typedef struct
     float2 DiffuseInfo;
     float2 DetailUV;
     float2 MacroUV;
-    uint32_t PolyFlags;
-    uint32_t DrawFlags;
 } GouraudVertexOutput;
 
 vertex GouraudVertexOutput DrawGouraudVertex
 (
-    uint VertexID [[vertex_id]],
-    uint InstanceID [[instance_id]],
-    device const GlobalUniforms* Uniforms [[buffer(0)]],
-    device const GouraudInstanceData* Data [[buffer(3)]],
-    device const GouraudVertex* Vertices [[buffer(4)]]
+    uint VertexID                           [[ vertex_id ]],
+    uint InstanceID                         [[ instance_id ]],
+    device const GlobalUniforms* Uniforms   [[ buffer(IDX_Uniforms)                  ]],
+    device const GouraudInstanceData* Data  [[ buffer(IDX_DrawGouraudInstanceData)   ]],
+    device const GouraudVertex* Vertices    [[ buffer(IDX_DrawGouraudVertexData)     ]]
 )
 {
     float4 InVertex = Vertices[VertexID].Point;
@@ -47,41 +45,37 @@ vertex GouraudVertexOutput DrawGouraudVertex
     Result.DiffuseInfo  = Data[InstanceID].DiffuseInfo.zw;
     Result.DetailUV     = Vertices[VertexID].UV.xy * Data[InstanceID].DetailMacroInfo.xy;
     Result.MacroUV      = Vertices[VertexID].UV.xy * Data[InstanceID].DetailMacroInfo.zw;
-    Result.PolyFlags    = Data[InstanceID].PolyFlags;
-    Result.DrawFlags    = Data[InstanceID].DrawFlags;
     return Result;
 }
 
 float4 fragment DrawGouraudFragment
 (
     GouraudVertexOutput in [[stage_in]],
-    texture2d< float, access::sample > DiffuseTexture [[texture(0)]],
-    texture2d< float, access::sample > DetailTexture [[texture(1)]],
-    texture2d< float, access::sample > MacroTexture [[texture(2)]],
-    device const GlobalUniforms* Uniforms [[buffer(0)]]
+    texture2d< float, access::sample > DiffuseTexture [[ texture(IDX_DiffuseTexture)                                      ]],
+    texture2d< float, access::sample > DetailTexture  [[ texture(IDX_DetailTexture) , function_constant(HasDetailTexture) ]],
+    texture2d< float, access::sample > MacroTexture   [[ texture(IDX_MacroTexture)  , function_constant(HasMacroTexture)  ]],
+    device const GlobalUniforms* Uniforms             [[ buffer(IDX_Uniforms)                                             ]]
 )
 {
     constexpr sampler s( address::repeat, filter::linear );
     float4 Color = DiffuseTexture.sample(s, in.DiffuseUV).rgba;
     
     // Diffuse factor
-    if (in.DiffuseInfo.x > 0.0)
-        Color *= in.DiffuseInfo.x;
+    //Color *= in.DiffuseInfo.x;
     
     // Alpha
-    if (in.DiffuseInfo.y > 0.0)
-        Color.a *= in.DiffuseInfo.y;
+    //Color.a *= in.DiffuseInfo.y;
     
-    Color = ApplyPolyFlags(Color, in.LightColor, in.PolyFlags);
+    Color = ApplyPolyFlags(Color, in.LightColor);
     in.Position.w = 1.0;
     
     float4 TotalColor = float4(1.0);
     
     // Handle fog
-    if (in.PolyFlags & PF_RenderFog)
+    if (ShouldRenderFog)
     {
         // Special case: fog+modulated
-        if (in.PolyFlags & PF_Modulated)
+        if (IsModulated)
         {
             // Code stolen errr borrowed from XOpenGLDrv
             float3 Delta = float3(0.5) - Color.xyz;
@@ -96,7 +90,7 @@ float4 fragment DrawGouraudFragment
             TotalColor.a = Color.a;
         }
     }
-    else if (in.PolyFlags & PF_Modulated)
+    else if (IsModulated)
     {
         // Modulated and no fog
         TotalColor = Color;
@@ -107,7 +101,7 @@ float4 fragment DrawGouraudFragment
         TotalColor = Color * float4(in.LightColor.rgb, 1.0);
     }
     
-    if (in.DrawFlags & DF_DetailTexture)
+    if (HasDetailTexture)
     {
         float NearZ = in.Position.z / 512.0;
         float DetailScale = 1.0;
@@ -136,7 +130,7 @@ float4 fragment DrawGouraudFragment
         }
     }
     
-    if (in.DrawFlags & DF_MacroTexture)
+    if (HasMacroTexture)
     {
         float4 MacroTexColor = MacroTexture.sample(s, in.MacroUV).rgba;
         float3 hsvMacroTex = rgb2hsv(MacroTexColor.rgb);
@@ -146,7 +140,7 @@ float4 fragment DrawGouraudFragment
         TotalColor *= MacroTexColor;
     }
     
-    if ((in.PolyFlags & PF_Modulated) != PF_Modulated)
+    if (!IsModulated)
         TotalColor = GammaCorrect(Uniforms->Gamma * 1.7, TotalColor);
     
     return TotalColor;

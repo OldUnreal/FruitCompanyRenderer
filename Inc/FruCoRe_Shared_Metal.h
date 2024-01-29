@@ -1,15 +1,42 @@
-enum DrawFlags
+enum ShaderOptions
 {
-    DF_None             = 0x00000000, 
-    DF_DiffuseTexture   = 0x00000001,
-    DF_LightMap         = 0x00000002,
-    DF_FogMap           = 0x00000004,
-    DF_DetailTexture    = 0x00000008,
-    DF_MacroTexture     = 0x00000010,
-    DF_BumpMap          = 0x00000020,
-    DF_EnvironmentMap   = 0x00000040,
-    DF_HeightMap        = 0x00000080,
-    DF_NoNearZ          = 0x00000100,
+    OPT_None            = 0x00,
+    OPT_DetailTexture   = 0x01,
+    OPT_MacroTexture    = 0x02,
+    OPT_LightMap        = 0x04,
+    OPT_FogMap          = 0x08,
+    OPT_RenderFog       = 0x10,
+    OPT_Modulated       = 0x20,
+    OPT_Masked          = 0x40,
+    OPT_AlphaBlended    = 0x80,  // straight or premultiplied. doesn't matter
+    OPT_Max             = 0x80
+};
+
+// Metal vertex shaders all share the same argument table.
+// As such, we cannot/should not change vertex/instance buffers when setting a new pipeline state.
+// Instead, we bind every vertex buffer and instance data buffer to a unique buffer index.
+enum BufferIndices
+{
+    IDX_Uniforms,                       // 0
+    IDX_DrawTileInstanceData,           // 1
+    IDX_DrawTileVertexData,             // 2
+    IDX_DrawGouraudInstanceData,        // 3
+    IDX_DrawGouraudVertexData,          // 4
+    IDX_DrawComplexInstanceData,        // 5
+    IDX_DrawComplexVertexData,          // 6
+    IDX_DrawSimpleTriangleInstanceData, // 7
+    IDX_DrawSimpleTriangleVertexData,   // 8
+    IDX_DrawSimpleLineInstanceData,     // 9
+    IDX_DrawSimpleLineVertexData        // 10
+};
+
+enum TextureIndices
+{
+    IDX_DiffuseTexture,
+    IDX_LightMap,
+    IDX_FogMap,
+    IDX_DetailTexture,
+    IDX_MacroTexture
 };
 
 //
@@ -37,6 +64,19 @@ struct GlobalUniforms
 };
 
 #if __METAL__
+
+//
+// Shader specialization options
+//
+constant bool HasLightMap       [[ function_constant(OPT_LightMap)      ]];
+constant bool HasFogMap         [[ function_constant(OPT_FogMap)        ]];
+constant bool HasDetailTexture  [[ function_constant(OPT_DetailTexture) ]];
+constant bool HasMacroTexture   [[ function_constant(OPT_MacroTexture)  ]];
+constant bool IsModulated       [[ function_constant(OPT_Modulated)     ]];
+constant bool IsMasked          [[ function_constant(OPT_Masked)        ]];
+constant bool IsAlphaBlended    [[ function_constant(OPT_AlphaBlended)  ]];
+constant bool ShouldRenderFog   [[ function_constant(OPT_RenderFog)     ]];
+
 inline float4 GammaCorrect(float Gamma, float4 Color)
 {
     float InvGamma = 1.0 / Gamma;
@@ -46,16 +86,16 @@ inline float4 GammaCorrect(float Gamma, float4 Color)
     return Color;
 }
 
-inline float4 ApplyPolyFlags(float4 Color, float4 LightColor, unsigned int PolyFlags)
+inline float4 ApplyPolyFlags(float4 Color, float4 LightColor)
 {
-    if (PolyFlags & PF_Masked)
+    if (IsMasked)
     {
         if (Color.a < 0.5)
             discard_fragment();
         else
             Color.rgb *= Color.a;
     }
-    else if (PolyFlags & (PF_Straight_AlphaBlend|PF_Premultiplied_AlphaBlend))
+    else if (IsAlphaBlended)
     {
         Color.a *= LightColor.a;
         if (Color.a < 0.01)

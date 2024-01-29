@@ -14,36 +14,37 @@
 -----------------------------------------------------------------------------*/
 void UFruCoReRenderDevice::DrawTile(FSceneNode* Frame, FTextureInfo& Info, FLOAT X, FLOAT Y, FLOAT XL, FLOAT YL, FLOAT U, FLOAT V, FLOAT UL, FLOAT VL, class FSpanBuffer* Span, FLOAT Z, FPlane Color, FPlane Fog, DWORD PolyFlags)
 {
-    SetSceneNode(Frame);
-    
     SetProgram(SHADER_Tile);
     auto Shader = dynamic_cast<DrawTileProgram*>(Shaders[SHADER_Tile]);
 
-    PolyFlags = FixPolyFlags(PolyFlags);
+    DWORD Options = OPT_None;
+    PolyFlags = GetPolyFlags(PolyFlags, Options);
     
     if (PolyFlags & PF_Modulated)
+    {
         Color = FPlane(1.f, 1.f, 1.f, 1.f);
+    }
         
-    if (Info.Texture && Info.Texture->Alpha > 0.f)
-        Color.W = Info.Texture->Alpha;
-    else Color.W = 1.0f;
+    Color.W = (Info.Texture && Info.Texture->Alpha > 0.f) ? Info.Texture->Alpha : 1.f;
     
     if (!Shader->VertexBuffer.CanBuffer(6) || !Shader->InstanceDataBuffer.CanBuffer(1))
         Shader->RotateBuffers();
     
-    SetBlendAndDepthMode(PolyFlags);
+    Shader->SelectPipelineState(GetBlendMode(PolyFlags), static_cast<ShaderOptions>(Options));
     
     // Hack to render HUD on top of everything in 469
 #if UNREAL_TOURNAMENT_OLDUNREAL
     if (!(((GUglyHackFlags & HACKFLAGS_PostRender) == 0) || Abs(1.f - Z) > SMALL_NUMBER))
         SetDepthMode(DEPTH_No_Test_No_Write);
+    else
 #endif
-    SetTexture(0, Info, PolyFlags, 0.f);
-    const auto Texture = BoundTextures[0];
+    SetDepthMode(((PolyFlags & PF_Occlude) == PF_Occlude) ? DEPTH_Test_And_Write : DEPTH_Test_No_Write);
+        
+    SetTexture(IDX_DiffuseTexture, Info, PolyFlags, 0.f);
+    const auto Texture = BoundTextures[IDX_DiffuseTexture];
     
     auto InstanceData = Shader->InstanceDataBuffer.GetCurrentElementPtr();
     InstanceData->DrawColor = simd_make_float4(Color.X, Color.Y, Color.Z, Color.W);
-    InstanceData->PolyFlags = PolyFlags;
     InstanceData->UPan      = Info.Pan.X;
     InstanceData->VPan      = Info.Pan.Y;
     InstanceData->UMult     = Texture->UMult;
@@ -73,14 +74,4 @@ void UFruCoReRenderDevice::DrawTile(FSceneNode* Frame, FTextureInfo& Info, FLOAT
     Shader->VertexBuffer.Advance(6);
     Shader->InstanceDataBuffer.Advance(1);
     Shader->DrawBuffer.EndDrawCall(6);
-}
-
-/*-----------------------------------------------------------------------------
-    DeactivateShader - make sure we re-enable depth testing when we're done
-    with DrawTile!
------------------------------------------------------------------------------*/
-void UFruCoReRenderDevice::DrawTileProgram::DeactivateShader()
-{
-    Flush();
-    ActivePipelineState = nullptr;
 }

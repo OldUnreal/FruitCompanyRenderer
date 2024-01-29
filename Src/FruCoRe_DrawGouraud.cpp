@@ -213,14 +213,11 @@ void UFruCoReRenderDevice::DrawGouraudProgram::PrepareDrawCall(FSceneNode* Frame
     
     GouraudInstanceData* Data = InstanceDataBuffer.GetCurrentElementPtr();
     
-    Data->DrawFlags = NoNearZ ? DF_NoNearZ : DF_None;
-    Data->PolyFlags = RenDev->FixPolyFlags(PolyFlags);
-    
-    RenDev->SetBlendAndDepthMode(Data->PolyFlags);
+    LastShaderOptions = OPT_None;
+    PolyFlags = RenDev->GetPolyFlags(PolyFlags, LastShaderOptions);
 
-    RenDev->SetTexture(0, Info, PolyFlags, 0.f);
-    Data->DrawFlags |= DF_DiffuseTexture;
-    Data->DiffuseInfo = simd::make_float4(RenDev->BoundTextures[0]->UMult, RenDev->BoundTextures[0]->VMult, 0.f, 0.f);
+    RenDev->SetTexture(IDX_DiffuseTexture, Info, PolyFlags, 0.f);
+    Data->DiffuseInfo = simd::make_float4(RenDev->BoundTextures[0]->UMult, RenDev->BoundTextures[0]->VMult, 1.f, 1.f);
     
     if (Info.Texture)
     {
@@ -231,28 +228,33 @@ void UFruCoReRenderDevice::DrawGouraudProgram::PrepareDrawCall(FSceneNode* Frame
     if (Info.Texture && Info.Texture->DetailTexture && RenDev->DetailTextures)
     {
         Info.Texture->DetailTexture->Lock(DetailTextureInfo, Frame->Viewport->CurrentTime, -1, RenDev);
-        RenDev->SetTexture(1, DetailTextureInfo, PolyFlags, 0.f);
+        RenDev->SetTexture(IDX_DetailTexture, DetailTextureInfo, PolyFlags, 0.f);
         Data->DetailMacroInfo[0] = RenDev->BoundTextures[1]->UMult;
         Data->DetailMacroInfo[1] = RenDev->BoundTextures[1]->VMult;
+        LastShaderOptions |= OPT_DetailTexture;
     }
 
     if (Info.Texture && Info.Texture->MacroTexture && RenDev->MacroTextures)
     {
         Info.Texture->MacroTexture->Lock(MacroTextureInfo, Frame->Viewport->CurrentTime, -1, RenDev);
-        RenDev->SetTexture(2, MacroTextureInfo, PolyFlags, 0.f);
+        RenDev->SetTexture(IDX_MacroTexture, MacroTextureInfo, PolyFlags, 0.f);
         Data->DetailMacroInfo[2] = RenDev->BoundTextures[2]->UMult;
         Data->DetailMacroInfo[3] = RenDev->BoundTextures[2]->VMult;
+        LastShaderOptions |= OPT_MacroTexture;
     }
+    
+    SelectPipelineState(GetBlendMode(PolyFlags), static_cast<ShaderOptions>(LastShaderOptions));
+    RenDev->SetDepthMode(((PolyFlags & PF_Occlude) == PF_Occlude) ? DEPTH_Test_And_Write : DEPTH_Test_No_Write);
 }
 
 void UFruCoReRenderDevice::DrawGouraudProgram::FinishDrawCall(FTextureInfo& Info)
 {
     GouraudInstanceData* Data = InstanceDataBuffer.GetCurrentElementPtr();
     
-    if (Data->DrawFlags & DF_DetailTexture)
+    if (LastShaderOptions & OPT_DetailTexture)
         Info.Texture->DetailTexture->Unlock(DetailTextureInfo);
 
-    if (Data->DrawFlags & DF_MacroTexture)
+    if (LastShaderOptions & OPT_MacroTexture)
         Info.Texture->MacroTexture->Unlock(MacroTextureInfo);
 }
 

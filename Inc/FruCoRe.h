@@ -380,25 +380,46 @@ class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
         DEPTH_Max
     };
     
-    // Metal vertex shaders all share the same argument table.
-    // As such, we cannot/should not change vertex/instance buffers when setting a new pipeline state.
-    // Instead, we bind every vertex buffer and instance data buffer to a unique buffer index.
-    enum BufferIndices
-    {
-        Uniforms,                       // 0
-        DrawTileInstanceData,           // 1
-        DrawTileVertexData,             // 2
-        DrawGouraudInstanceData,        // 3
-        DrawGouraudVertexData,          // 4
-        DrawComplexInstanceData,        // 5
-        DrawComplexVertexData,          // 6
-        DrawSimpleTriangleInstanceData, // 7
-        DrawSimpleTriangleVertexData,   // 8
-        DrawSimpleLineInstanceData,     // 9
-        DrawSimpleLineVertexData        // 10
-    };
-    
     #include "FruCoRe_Shared_Metal.h"
+    
+    static FString ShaderOptionsString(ShaderOptions Options)
+    {
+        FString Result;
+#define ADD_OPTION(x)               \
+    if (Options & x)                \
+    {                               \
+        if (Result.Len() > 0)       \
+            Result += TEXT("|");    \
+        Result += TEXT(#x);         \
+    }
+        ADD_OPTION(OPT_DetailTexture);
+        ADD_OPTION(OPT_MacroTexture);
+        ADD_OPTION(OPT_LightMap);
+        ADD_OPTION(OPT_FogMap);
+        ADD_OPTION(OPT_RenderFog);
+        ADD_OPTION(OPT_Modulated);
+        ADD_OPTION(OPT_Masked);
+        ADD_OPTION(OPT_AlphaBlended);
+        if (Result.Len() == 0)
+            Result = TEXT("OPT_None");
+        return Result;
+    }
+    
+    struct ShaderSpecializationKey
+    {
+        BlendMode Mode;
+        ShaderOptions Options;
+        
+        UBOOL operator==(const ShaderSpecializationKey& Other)
+        {
+            return Other.Mode == Mode && Other.Options == Options;
+        }
+        
+        friend DWORD GetTypeHash(const ShaderSpecializationKey& Key)
+        {
+            return (Key.Options << 4) + Key.Mode;
+        }
+    };
 
     // Common interface for all shaders
     class ShaderProgram
@@ -411,14 +432,17 @@ class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
         //
 
         void DumpShader(const char* Source, bool AddLineNumbers);
-        void BuildPipelineStates(const TCHAR* Label, MTL::Function* VertexShader, MTL::Function* FragmentShader);
+        void BuildPipelineStates(ShaderOptions Options, const TCHAR* Label, MTL::Function* VertexShader, MTL::Function* FragmentShader);
         
         //
         // Shader-specific functions
         //
         
         // Builds the shaders and creates buffers and pipeline states
-        virtual void BuildPipeline() = 0;
+        virtual void BuildCommonPipelineStates() = 0;
+        
+        // Retrieves the specialized pipeline state for the given options. If the desired state does not exist, this function should create it on-the-fly
+        virtual void SelectPipelineState(BlendMode Mode, ShaderOptions Options) = 0;
 
         // Activates the default pipeline state for this shader and (potentially) flushes/resets shader-specific buffers
         virtual void ActivateShader() = 0;
@@ -435,8 +459,8 @@ class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
         //
         // Common Variables
         //
-        MTL::RenderPipelineState*       ActivePipelineState{};
-        MTL::RenderPipelineState*       PipelineStates[BLEND_Max];
+        TMap<ShaderSpecializationKey, MTL::RenderPipelineState*>
+                                        PipelineStates;
         UFruCoReRenderDevice*           RenDev{};
         
         // Shader properties
@@ -465,44 +489,84 @@ class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
         BufferObject<I>                 InstanceDataBuffer;
         MultiDrawIndirectBuffer         DrawBuffer;
         
+        // Previously selected state
+        ShaderSpecializationKey         CachedStateKey{};
+        MTL::RenderPipelineState*       CachedState{};
+        
         ShaderProgramImpl() = default;
         
         virtual ~ShaderProgramImpl()
         {
-            for (auto PipelineState : PipelineStates)
+            for (TMap<ShaderSpecializationKey, MTL::RenderPipelineState*>::TIterator It(PipelineStates); It; ++It)
             {
-                if (PipelineState)
-                    PipelineState->release();
+                It.Value()->release();
             }
+        }
+        
+        virtual void BuildCommonPipelineStates()
+        {
+            // TODO: Build commonly used states here so we don't get too many frame drops due to on-the-fly compilation
+            
+            // Build buffers
+            if (VertexBuffer.Size() == 0)
+                VertexBuffer.Initialize(VertexBufferSize, RenDev->Device, VertexBufferBindingIndex);
+            if (InstanceDataBuffer.Size() == 0)
+                InstanceDataBuffer.Initialize(InstanceDataBufferSize, RenDev->Device, InstanceDataBufferBindingIndex);
         }
 
         // Builds the shaders and creates buffers and pipeline states
-        virtual void BuildPipeline()
+        virtual void SelectPipelineState(BlendMode Mode, ShaderOptions Options)
         {
+            ShaderSpecializationKey Key = {Mode, Options};
+            
+            // Fast path to avoid an expensive pipeline state lookup
+            if (Key == CachedStateKey && CachedState)
+            {
+                RenDev->SetPipelineState(CachedState);
+                return;
+            }
+            
+            // We have to switch to a new state. See if we've already compiled the shaders
+            auto State = PipelineStates.Find(Key);
+            if (State)
+            {
+                RenDev->SetPipelineState(*State);
+                return;
+            }
+            
+            // No such state exists yet. We need to create it on the fly
             MTL::Library* Library = RenDev->GetShaderLibrary();
             check(Library && "Could not create shader library");
 
-            MTL::Function* VertexShader = Library->newFunction( NS::String::string(VertexFunctionName, NS::UTF8StringEncoding) );
-            MTL::Function* FragmentShader = Library->newFunction( NS::String::string(FragmentFunctionName, NS::UTF8StringEncoding) );
-
-            BuildPipelineStates(ShaderName, VertexShader, FragmentShader);
-
-            debugf(NAME_DevGraphics, TEXT("Frucore: Compiled %ls Shaders"), ShaderName);
+            MTL::FunctionConstantValues* ConstantValues = MTL::FunctionConstantValues::alloc()->init();
+            for (INT i = 0x01; i <= OPT_Max; i *= 2)
+            {
+                const bool Value = (Options & i) ? true : false;
+                ConstantValues->setConstantValue(&Value, MTL::DataTypeBool, i);
+            }
             
-            // Build buffers
-            VertexBuffer.Initialize(VertexBufferSize, RenDev->Device, VertexBufferBindingIndex);
-            InstanceDataBuffer.Initialize(InstanceDataBufferSize, RenDev->Device, InstanceDataBufferBindingIndex);
+            NS::Error* Error = nullptr;
+            MTL::Function* VertexShader = Library->newFunction(NS::String::string(VertexFunctionName, NS::UTF8StringEncoding), ConstantValues, &Error);
+            MTL::Function* FragmentShader = Library->newFunction(NS::String::string(FragmentFunctionName, NS::UTF8StringEncoding), ConstantValues, &Error);
+
+            BuildPipelineStates(Options, ShaderName, VertexShader, FragmentShader);
+
+            debugf(NAME_DevGraphics, TEXT("Frucore: Specialized %ls Shaders for Options %ls"), ShaderName, *ShaderOptionsString(Options));
             
             VertexShader->release();
             FragmentShader->release();
+            ConstantValues->release();
             Library->release();
+            
+            State = PipelineStates.Find(Key);
+            check(State);
+            
+            RenDev->SetPipelineState(*State);
         }
 
-        // Activates the default pipeline state for this shader and (potentially) flushes/resets shader-specific buffers
+        // Binds this shader's buffer to the active commandencoder
         virtual void ActivateShader()
         {
-            ActivePipelineState = nullptr;
-            RenDev->SetBlendAndDepthMode(0);
             VertexBuffer.BindBuffer(RenDev->CommandEncoder);
             InstanceDataBuffer.BindBuffer(RenDev->CommandEncoder);
         }
@@ -511,7 +575,6 @@ class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
         virtual void DeactivateShader()
         {
             Flush();
-            ActivePipelineState = nullptr;
         }
         
         // Called when one of our buffers is full. Commits any pending data, then rotates the vertex buffers and resets the draw buffer.
@@ -553,7 +616,7 @@ class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
     #include "FruCoRe_DrawTile_Metal.h"
     #include "FruCoRe_DrawSimple_Metal.h"
     
-    class DrawComplexProgram : public ShaderProgramImpl<ComplexVertex, ComplexInstanceData, DRAWCOMPLEX_VERTEXBUFFER_SIZE, BufferIndices::DrawComplexVertexData, DRAWCOMPLEX_INSTANCEDATA_SIZE, BufferIndices::DrawComplexInstanceData>
+    class DrawComplexProgram : public ShaderProgramImpl<ComplexVertex, ComplexInstanceData, DRAWCOMPLEX_VERTEXBUFFER_SIZE, IDX_DrawComplexVertexData, DRAWCOMPLEX_INSTANCEDATA_SIZE, IDX_DrawComplexInstanceData>
     {
     public:
         DrawComplexProgram(UFruCoReRenderDevice* _RenDev, const TCHAR* _ShaderName, const char* _VertexFunctionName, const char* _FragmentFunctionName)
@@ -565,7 +628,7 @@ class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
         }
     };
     
-    class DrawGouraudProgram : public ShaderProgramImpl<GouraudVertex, GouraudInstanceData, DRAWGOURAUD_VERTEXBUFFER_SIZE, BufferIndices::DrawGouraudVertexData, DRAWGOURAUD_INSTANCEDATA_SIZE, BufferIndices::DrawGouraudInstanceData>
+    class DrawGouraudProgram : public ShaderProgramImpl<GouraudVertex, GouraudInstanceData, DRAWGOURAUD_VERTEXBUFFER_SIZE, IDX_DrawGouraudVertexData, DRAWGOURAUD_INSTANCEDATA_SIZE, IDX_DrawGouraudInstanceData>
     {
     public:
         DrawGouraudProgram(UFruCoReRenderDevice* _RenDev, const TCHAR* _ShaderName, const char* _VertexFunctionName, const char* _FragmentFunctionName)
@@ -581,11 +644,12 @@ class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
         void PushClipPlane(const FPlane& ClipPlane);
         void PopClipPlane();
         
+        DWORD LastShaderOptions{};
         FTextureInfo DetailTextureInfo{};
         FTextureInfo MacroTextureInfo{};
     };
     
-    class DrawTileProgram : public ShaderProgramImpl<TileVertex, TileInstanceData, DRAWTILE_VERTEXBUFFER_SIZE, BufferIndices::DrawTileVertexData, DRAWTILE_INSTANCEDATA_SIZE, BufferIndices::DrawTileInstanceData>
+    class DrawTileProgram : public ShaderProgramImpl<TileVertex, TileInstanceData, DRAWTILE_VERTEXBUFFER_SIZE, IDX_DrawTileVertexData, DRAWTILE_INSTANCEDATA_SIZE, IDX_DrawTileInstanceData>
     {
     public:
         DrawTileProgram(UFruCoReRenderDevice* _RenDev, const TCHAR* _ShaderName, const char* _VertexFunctionName, const char* _FragmentFunctionName)
@@ -595,10 +659,9 @@ class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
             this->VertexFunctionName = _VertexFunctionName;
             this->FragmentFunctionName = _FragmentFunctionName;
         }
-        virtual void DeactivateShader();
     };
     
-    class DrawSimpleTriangleProgram : public ShaderProgramImpl<SimpleTriangleVertex, SimpleTriangleInstanceData, DRAWSIMPLE_VERTEXBUFFER_SIZE, BufferIndices::DrawSimpleTriangleVertexData, DRAWSIMPLE_INSTANCEDATA_SIZE, BufferIndices::DrawSimpleTriangleInstanceData>
+    class DrawSimpleTriangleProgram : public ShaderProgramImpl<SimpleTriangleVertex, SimpleTriangleInstanceData, DRAWSIMPLE_VERTEXBUFFER_SIZE, IDX_DrawSimpleTriangleVertexData, DRAWSIMPLE_INSTANCEDATA_SIZE, IDX_DrawSimpleTriangleInstanceData>
     {
     public:
         DrawSimpleTriangleProgram(UFruCoReRenderDevice* _RenDev, const TCHAR* _ShaderName, const char* _VertexFunctionName, const char* _FragmentFunctionName)
@@ -655,8 +718,8 @@ class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
     // Renderer-specific functions
     //
     void SetProgram(INT Program);
-    DWORD FixPolyFlags(DWORD PolyFlags);
-    void SetBlendAndDepthMode(DWORD PolyFlags);
+    DWORD GetPolyFlags(DWORD PolyFlags, DWORD& Options);
+    static BlendMode GetBlendMode(DWORD PolyFlags);
     void SetDepthMode(DepthMode Mode);
     void SetTexture(INT TexNum, FTextureInfo& Info, DWORD PolyFlags, FLOAT PanBias);
     void SetProjection(FSceneNode* Frame, UBOOL bNearZ);
@@ -664,6 +727,7 @@ class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
     void RegisterTextureFormats();
     void CreateCommandEncoder(MTL::CommandBuffer* Buffer, bool ClearDepthBuffer=true, bool ClearColorBuffer=true);
     MTL::Library* GetShaderLibrary();
+    void SetPipelineState(const MTL::RenderPipelineState* State);
 
 //private:
     // Persistent state
@@ -699,6 +763,7 @@ class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
     TMap<QWORD, CachedTexture>      BindMap;
     
     // Per-frame state
+    const MTL::RenderPipelineState* ActivePipelineState{};
     MTL::CommandBuffer*             CommandBuffer;
     MTL::RenderPassDescriptor*      PassDescriptor;
     MTL::RenderCommandEncoder*      CommandEncoder;
@@ -722,6 +787,10 @@ class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
     // Screen flashes
     FPlane                          FlashScale;
     FPlane                          FlashFog;
+    
+    // Cached info for polyflag => shader options conversion
+    DWORD                           CachedPolyFlags;
+    DWORD                           CachedShaderOptions;
     
     // Hack: When we detect the first draw call within PostRender, we clear the Z buffer so the weapon and HUD render on top of anything else
     BOOL                            DrawingWeapon;
