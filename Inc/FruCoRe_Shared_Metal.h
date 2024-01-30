@@ -63,7 +63,7 @@ struct GlobalUniforms
     uint32_t DetailMax;
 };
 
-#if __METAL__
+#if __METAL_VERSION__
 
 //
 // Shader specialization options

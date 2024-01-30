@@ -9,6 +9,7 @@
 #pragma once
 
 #include "Render.h"
+#define BOOL NOT_REALLY_BOOL // Hack to deal with the conflicting BOOL typedef in Apple's headers
 
 #ifdef GENERATE_METAL_IMPLEMENTATION
 #define NS_PRIVATE_IMPLEMENTATION
