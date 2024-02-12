@@ -17,6 +17,9 @@ The following features are not implemented (yet):
 
 * Editor support
 * Line rendering
+* Anti-Aliasing
+* LODBias
+* Bump Mapping
 
 ## Build Instructions
 
