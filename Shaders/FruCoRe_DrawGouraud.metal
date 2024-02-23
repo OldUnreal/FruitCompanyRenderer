@@ -58,7 +58,7 @@ float4 fragment DrawGouraudFragment
 )
 {
     constexpr sampler s( address::repeat, filter::linear );
-    float4 Color = DiffuseTexture.sample(s, in.DiffuseUV).rgba;
+    float4 Color = DiffuseTexture.sample(s, in.DiffuseUV, bias(Uniforms->LODBias)).rgba;
     
     // Diffuse factor
     //Color *= in.DiffuseInfo.x;
@@ -118,7 +118,7 @@ float4 fragment DrawGouraudFragment
             bNear = clamp(0.65 - NearZ, 0.0, 1.0);
             if (bNear > 0.0)
             {
-                DetailTexColor = DetailTexture.sample(s, in.DetailUV * DetailScale);
+                DetailTexColor = DetailTexture.sample(s, in.DetailUV * DetailScale, bias(Uniforms->LODBias));
 
                 float3 hsvDetailTex = rgb2hsv(DetailTexColor.rgb); // cool idea Han :)
                 hsvDetailTex.b += (DetailTexColor.r - 0.1);
@@ -132,7 +132,7 @@ float4 fragment DrawGouraudFragment
     
     if (HasMacroTexture)
     {
-        float4 MacroTexColor = MacroTexture.sample(s, in.MacroUV).rgba;
+        float4 MacroTexColor = MacroTexture.sample(s, in.MacroUV, bias(Uniforms->LODBias)).rgba;
         float3 hsvMacroTex = rgb2hsv(MacroTexColor.rgb);
         hsvMacroTex.b += (MacroTexColor.r - 0.1);
         hsvMacroTex = hsv2rgb(hsvMacroTex);

@@ -57,6 +57,7 @@ struct GlobalUniforms
     float zNear;
     float zFar;
     
+    float LODBias;
     float Gamma;
     bool HitTesting;
     uint32_t RendMap;

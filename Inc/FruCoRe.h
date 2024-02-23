@@ -51,6 +51,7 @@ class UFruCoReRenderDevice : public URenderDevice
     //
     UBOOL MacroTextures;
     UBOOL UseVSync;
+    FLOAT LODBias;
     
     //
     // A BufferObject describes a GPU-mapped buffer object
@@ -796,6 +797,9 @@ class UFruCoReRenderDevice : public URenderDevice
     
     // Brightness and gamma
     FLOAT                           StoredBrightness;
+    
+    // Level of detail
+    FLOAT                           StoredLODBias;
     
     // Screen flashes
     FPlane                          FlashScale;

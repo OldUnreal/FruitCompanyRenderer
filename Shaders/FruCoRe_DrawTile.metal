@@ -50,7 +50,7 @@ float4 fragment DrawTileFragment
 )
 {
     constexpr sampler s( address::repeat, filter::linear );
-    float4 Color = ApplyPolyFlags(tex.sample(s, in.UV).rgba, float4(1.0));
+    float4 Color = ApplyPolyFlags(tex.sample(s, in.UV, bias(Uniforms->LODBias)).rgba, float4(1.0));
     float4 TotalColor = Color * in.DrawColor;
     
     if (!IsModulated)

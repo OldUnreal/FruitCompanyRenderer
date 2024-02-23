@@ -32,6 +32,7 @@ void UFruCoReRenderDevice::StaticConstructor()
     // Register renderer options
     new(GetClass(),TEXT("UseVSync"), RF_Public)UBoolProperty(CPP_PROPERTY(UseVSync), TEXT("Options"), CPF_Config);
     new(GetClass(),TEXT("MacroTextures"), RF_Public)UBoolProperty(CPP_PROPERTY(MacroTextures), TEXT("Options"), CPF_Config );
+    new(GetClass(),TEXT("LODBias"), RF_Public)UFloatProperty(CPP_PROPERTY(LODBias), TEXT("Options"), CPF_Config );
     
     // Generic RenderDevice settings
     VolumetricLighting = true;
@@ -49,6 +50,7 @@ void UFruCoReRenderDevice::StaticConstructor()
     // Frucore-specific settings
     UseVSync = false;
     MacroTextures = true;
+    LODBias = 0.f;
 }
 
 /*-----------------------------------------------------------------------------
@@ -330,7 +332,8 @@ void UFruCoReRenderDevice::SetProjection(FSceneNode *Frame, UBOOL bNearZ)
 {
     const auto ChangedUniforms = 
         (StoredFovAngle != Frame->Viewport->Actor->FovAngle ||
-         StoredBrightness != Frame->Viewport->GetOuterUClient()->Brightness);
+         StoredBrightness != Frame->Viewport->GetOuterUClient()->Brightness ||
+         StoredLODBias != LODBias);
     const auto ChangedViewportBounds =
         (StoredFX != Frame->FX ||
          StoredFY != Frame->FY ||
@@ -366,6 +369,7 @@ void UFruCoReRenderDevice::SetProjection(FSceneNode *Frame, UBOOL bNearZ)
     StoredOriginX = Frame->XB;
     StoredOriginY = Frame->YB;
     StoredBrightness = Frame->Viewport->GetOuterUClient()->Brightness;
+    StoredLODBias = LODBias;
     
     auto GlobalUniforms = GlobalUniformsBuffer.GetElementPtr(0);
 
@@ -388,6 +392,7 @@ void UFruCoReRenderDevice::SetProjection(FSceneNode *Frame, UBOOL bNearZ)
     GlobalUniforms->zNear = zNear;
     GlobalUniforms->zFar = zFar;
     GlobalUniforms->Gamma = StoredBrightness;
+    GlobalUniforms->LODBias = StoredLODBias;
     GlobalUniforms->DetailMax = 2;
         
     // Push to the GPU

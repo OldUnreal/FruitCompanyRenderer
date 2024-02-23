@@ -89,7 +89,7 @@ float4 fragment DrawComplexFragment
 )
 {
     constexpr sampler s(address::repeat, filter::linear);
-    float4 Color = DiffuseTexture.sample(s, in.DiffuseUV).rgba;
+    float4 Color = DiffuseTexture.sample(s, in.DiffuseUV, bias(Uniforms->LODBias)).rgba;
     
     // Diffuse factor
     //Color *= in.DiffuseInfo.x;
@@ -104,7 +104,7 @@ float4 fragment DrawComplexFragment
     
     if (HasLightMap)
     {
-        LightColor = LightMap.sample(s, in.LightMapUV).bgra;
+        LightColor = LightMap.sample(s, in.LightMapUV, bias(Uniforms->LODBias)).bgra;
         LightColor.rgb *= 255.0 / 127.0;
         LightColor.a = 1.0;
     }
@@ -126,7 +126,7 @@ float4 fragment DrawComplexFragment
             bNear = clamp(0.65 - NearZ, 0.0, 1.0);
             if (bNear > 0.0)
             {
-                DetailTexColor = DetailTexture.sample(s, in.DetailUV * DetailScale);
+                DetailTexColor = DetailTexture.sample(s, in.DetailUV * DetailScale, bias(Uniforms->LODBias));
                 
                 float3 hsvDetailTex = rgb2hsv(DetailTexColor.rgb); // cool idea Han :)
                 hsvDetailTex.b += (DetailTexColor.r - 0.1);
@@ -140,7 +140,7 @@ float4 fragment DrawComplexFragment
     
     if (HasMacroTexture)
     {
-        float4 MacroTexColor = MacroTexture.sample(s, in.MacroUV).rgba;
+        float4 MacroTexColor = MacroTexture.sample(s, in.MacroUV, bias(Uniforms->LODBias)).rgba;
         MacroTexColor = ApplyPolyFlags(MacroTexColor, float4(1.0));
         float3 hsvMacroTex = rgb2hsv(MacroTexColor.rgb);
         hsvMacroTex.b += (MacroTexColor.r - 0.1);
@@ -151,7 +151,7 @@ float4 fragment DrawComplexFragment
     
     float4 FogColor = float4(0.0);
     if (HasFogMap)
-        FogColor = FogMap.sample(s, in.FogMapUV).rgba * 2.0;
+        FogColor = FogMap.sample(s, in.FogMapUV, bias(Uniforms->LODBias)).rgba * 2.0;
     
     if (!IsModulated)
         return GammaCorrect(Uniforms->Gamma * 1.7, TotalColor * LightColor + FogColor);
