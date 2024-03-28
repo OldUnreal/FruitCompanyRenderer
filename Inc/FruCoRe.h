@@ -22,19 +22,15 @@
 #include <QuartzCore/CAMetalDrawable.hpp>
 #include <simd/simd.h>
 
-#define DRAWTILE_VERTEXBUFFER_SIZE 16 * 1024
-#define DRAWTILE_INSTANCEDATA_SIZE 1024
-#define DRAWTILE_DRAWBUFFER_SIZE 1024
-#define DRAWCOMPLEX_VERTEXBUFFER_SIZE 256 * 1024
-#define DRAWCOMPLEX_INSTANCEDATA_SIZE 1024
-#define DRAWCOMPLEX_DRAWBUFFER_SIZE 1024
-#define DRAWGOURAUD_VERTEXBUFFER_SIZE 2 * 1024 * 1024
-#define DRAWGOURAUD_INSTANCEDATA_SIZE 16 * 1024
-#define DRAWGOURAUD_DRAWBUFFER_SIZE 16 * 1024
-#define DRAWSIMPLE_DRAWBUFFER_SIZE 1024
-#define DRAWSIMPLE_VERTEXBUFFER_SIZE 1024
+#define DRAWTILE_INSTANCEDATA_SIZE 128
+#define DRAWTILE_VERTEXBUFFER_SIZE (DRAWTILE_INSTANCEDATA_SIZE * 6) // We always have 6 vertices per instance
+#define DRAWCOMPLEX_INSTANCEDATA_SIZE 128
+#define DRAWCOMPLEX_VERTEXBUFFER_SIZE (DRAWCOMPLEX_INSTANCEDATA_SIZE * 128)
+#define DRAWGOURAUD_INSTANCEDATA_SIZE 128
+#define DRAWGOURAUD_VERTEXBUFFER_SIZE (DRAWGOURAUD_INSTANCEDATA_SIZE * 128)
 #define DRAWSIMPLE_INSTANCEDATA_SIZE 128
-#define NUMBUFFERS 3
+#define DRAWSIMPLE_VERTEXBUFFER_SIZE (DRAWSIMPLE_INSTANCEDATA_SIZE * 6) // We always have 6 vertices per instance
+#define NUMBUFFERS 16
 
 #if UNREAL_TOURNAMENT_OLDUNREAL
 class UFruCoReRenderDevice : public URenderDeviceOldUnreal469
@@ -122,6 +118,15 @@ class UFruCoReRenderDevice : public URenderDevice
             }
             else
             {
+                // dispatch_semaphore_wait docs:
+                // * Decrement the counting semaphore. If the resulting value is less than zero,
+                // * this function waits for a signal to occur before returning. If the timeout is
+                // * reached without a signal being received, the semaphore is re-incremented
+                // * before the function returns.
+                //
+                // This means there's no need to manually increment the semaphore here to reflect
+                // the additional buffer we're going to create!
+                
                 // The GPU is using all buffers. We'll just allocate a new one then
                 Buffers.AddZeroed(1);
                 
@@ -130,15 +135,16 @@ class UFruCoReRenderDevice : public URenderDevice
                 check(NewBuffer);
                 
                 // Now this part is pretty tricky. We need to ensure that the buffers
-                // are ordered by their last use. ActiveBuffer is the most recently
+                // are ordered by their last time of use. ActiveBuffer is the most recently
                 // used buffer. ActiveBuffer-1 is the second most recently used buffer.
                 // etc. This means our new buffer _must_ be inserted right after
                 // ActiveBuffer.
                 INT InsertionPos = (ActiveBuffer + 1) % Buffers.Num();
                 if (InsertionPos != Buffers.Num() - 1)
                 {
+                    // Move the least recently used buffers back in the buffer array!
                     memmove(&Buffers(InsertionPos + 1),
-                            &Buffers(InsertionPos),
+                            &Buffers(InsertionPos    ),
                             sizeof(MTL::Buffer*) * (Buffers.Num() - InsertionPos - 1));
                 }
                 
@@ -151,10 +157,6 @@ class UFruCoReRenderDevice : public URenderDevice
             Index = EnqueuedElements = 0;
             
             BindBuffer(Encoder);
-            
-            // No need to wait for the new buffer here!
-            // If TryWait() succeeded, then it will have decremented the semaphore count too
-            // If it fails, it leaves the semaphore count untouched
         }
         
         // Binds the buffer object to the vertex and fragment shader argument tables, if applicable
@@ -223,24 +225,15 @@ class UFruCoReRenderDevice : public URenderDevice
         }
 
         //
-        // Signals the dispatch semaphore (if @DirectSignal=true) or
-        // schedules a signal operation (if @DirectSignal=false).
-        // In the latter case, the GPU driver will perform the signal
-        // operation using a completedHandler. This handler gets executed
-        // when the command buffer has fully processed all queued commands.
+        // Lets the GPU driver signal our dispatch semaphore when it's
+        // done executing commands. This indicates this BufferObject is
+        // once again available to the CPU.
         //
-        void Signal(MTL::CommandBuffer* Buffer, bool DirectSignal=false)
+        void Signal(MTL::CommandBuffer* Buffer)
         {
-            if (DirectSignal)
-            {
+            Buffer->addCompletedHandler(^void( MTL::CommandBuffer* Buf ){
                 dispatch_semaphore_signal( Sync );
-            }
-            else
-            {
-                Buffer->addCompletedHandler(^void( MTL::CommandBuffer* Buf ){
-                    dispatch_semaphore_signal( Sync );
-                });
-            }
+            });
         }
 
         // Waits for an available buffer.
@@ -256,6 +249,11 @@ class UFruCoReRenderDevice : public URenderDevice
         {
             return dispatch_semaphore_wait(Sync, DISPATCH_TIME_NOW) == 0;
         }
+
+		INT BufferCount() const
+		{
+			return Buffers.Num();
+		}
         
         //
         // Initializes our buffer object by creating <NUMBUFFERS> managed Metal buffers of @BufferSize * sizeof(T) bytes each.
@@ -270,6 +268,8 @@ class UFruCoReRenderDevice : public URenderDevice
         void Initialize(uint32_t BufferSize, MTL::Device* Device, int32_t VertexIndex=-1, int32_t FragmentIndex=-1)
         {
             this->BufferSize = BufferSize;
+            
+            // The initial count is NUMBUFFERS-1 because we bind the very first set buffer without locking it
             Sync = dispatch_semaphore_create(NUMBUFFERS-1);
             Buffers.AddZeroed(NUMBUFFERS);
             for (INT i = 0; i < NUMBUFFERS; ++i)
@@ -583,19 +583,20 @@ class UFruCoReRenderDevice : public URenderDevice
             Flush();
         }
         
-        // Called when one of our buffers is full. Commits any pending data, then rotates the vertex buffers and resets the draw buffer.
+        // Called when one of our buffers is full. 
+        // Commits any pending data, then rotates the vertex buffers and resets the draw buffer.
         virtual void RotateBuffers()
         {
-            bool ShouldFlush = DrawBuffer.HasUnqueuedCommands();
-            if (ShouldFlush)
-                Flush();
+            // Make the GPU driver signal our buffer semaphores when it's done with the current command buffer
+            // This way, we know the full buffer is ready to reuse
+            VertexBuffer.Signal(RenDev->CommandBuffer);
+            InstanceDataBuffer.Signal(RenDev->CommandBuffer);
+            
+            Flush();
             
             VertexBuffer.Rotate(RenDev->Device, RenDev->CommandEncoder);
             InstanceDataBuffer.Rotate(RenDev->Device, RenDev->CommandEncoder);
             DrawBuffer.Reset();
-            
-            VertexBuffer.Signal(RenDev->CommandBuffer, !ShouldFlush);
-            InstanceDataBuffer.Signal(RenDev->CommandBuffer, !ShouldFlush);
         }
 
         // Dispatches buffered data

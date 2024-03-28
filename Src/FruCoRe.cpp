@@ -244,6 +244,35 @@ void UFruCoReRenderDevice::ClearZ(FSceneNode* Frame)
 -----------------------------------------------------------------------------*/
 void UFruCoReRenderDevice::GetStats(TCHAR* Result)
 {
+	FString Stats;
+	auto SimpleShader = dynamic_cast<DrawSimpleTriangleProgram*>(Shaders[SHADER_Simple_Triangle]);
+	auto TileShader =
+		dynamic_cast<DrawTileProgram*>(Shaders[SHADER_Tile]);
+	auto ComplexShader =
+		dynamic_cast<DrawComplexProgram*>(Shaders[SHADER_Complex]);
+	auto GouraudShader =
+		dynamic_cast<DrawGouraudProgram*>(Shaders[SHADER_Gouraud]);
+
+	Stats = TEXT("Frucore");
+	
+	if (!SimpleShader || !TileShader || !ComplexShader || !GouraudShader)
+		return;
+	
+
+	Stats += FString::Printf(TEXT("Buffer Counts: Simple %05d/%05d/%05d - Tile %05d/%05d/%05d - Complex %05d/%05d/%05d - Gouraud %05d/%05d/%05d"),
+							 SimpleShader->VertexBuffer.BufferCount(),
+							 SimpleShader->InstanceDataBuffer.BufferCount(),
+							 SimpleShader->DrawBuffer.CommandBuffer.Num(),
+							 TileShader->VertexBuffer.BufferCount(),
+							 TileShader->InstanceDataBuffer.BufferCount(),
+							 TileShader->DrawBuffer.CommandBuffer.Num(),
+							 ComplexShader->VertexBuffer.BufferCount(),
+							 ComplexShader->InstanceDataBuffer.BufferCount(),
+							 ComplexShader->DrawBuffer.CommandBuffer.Num(),
+							 GouraudShader->VertexBuffer.BufferCount(),
+							 GouraudShader->InstanceDataBuffer.BufferCount(),
+							 GouraudShader->DrawBuffer.CommandBuffer.Num());
+	appStrcpy(Result, *Stats);
 }
 
 /*-----------------------------------------------------------------------------
