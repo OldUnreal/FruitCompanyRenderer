@@ -199,8 +199,6 @@ void UFruCoReRenderDevice::Lock(FPlane _FlashScale, FPlane _FlashFog, FPlane Scr
     CommandBuffer = CommandQueue->commandBuffer();
     
     CreateCommandEncoder(CommandBuffer);
-    
-    memset(BoundTextures, 0, sizeof(BoundTextures));
 }
 
 /*-----------------------------------------------------------------------------
@@ -535,6 +533,8 @@ void UFruCoReRenderDevice::CreateCommandEncoder(MTL::CommandBuffer *Buffer, bool
     
     if (ActivePipelineState)
         CommandEncoder->setRenderPipelineState(ActivePipelineState);
+    
+    memset(BoundTextures, 0, sizeof(BoundTextures));
 }
 
 /*-----------------------------------------------------------------------------
