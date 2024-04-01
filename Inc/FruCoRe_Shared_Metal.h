@@ -1,15 +1,19 @@
 enum ShaderOptions
 {
-    OPT_None            = 0x00,
-    OPT_DetailTexture   = 0x01,
-    OPT_MacroTexture    = 0x02,
-    OPT_LightMap        = 0x04,
-    OPT_FogMap          = 0x08,
-    OPT_RenderFog       = 0x10,
-    OPT_Modulated       = 0x20,
-    OPT_Masked          = 0x40,
-    OPT_AlphaBlended    = 0x80,  // straight or premultiplied. doesn't matter
-    OPT_Max             = 0x80
+    OPT_None            = 0x000,
+    OPT_DetailTexture   = 0x001,
+    OPT_MacroTexture    = 0x002,
+    OPT_LightMap        = 0x004,
+    OPT_FogMap          = 0x008,
+    OPT_RenderFog       = 0x010,
+    OPT_Modulated       = 0x020,
+    OPT_Masked          = 0x040,
+    OPT_AlphaBlended    = 0x080,  // straight or premultiplied. doesn't matter
+    OPT_NoMSAA          = 0x100,
+    OPT_MSAAx2          = 0x200,
+    OPT_MSAAx4          = 0x400,
+    OPT_MSAAx8          = 0x800,
+    OPT_Max             = 0x800
 };
 
 // Metal vertex shaders all share the same argument table.
@@ -58,7 +62,9 @@ struct GlobalUniforms
     float zFar;
     
     float LODBias;
+    float Brightness;
     float Gamma;
+    float LightMapFactor; // 2 for OneXBlending, 4 for !OneXBlending
     bool HitTesting;
     uint32_t RendMap;
     uint32_t DetailMax;
@@ -77,6 +83,22 @@ constant bool IsModulated       [[ function_constant(OPT_Modulated)     ]];
 constant bool IsMasked          [[ function_constant(OPT_Masked)        ]];
 constant bool IsAlphaBlended    [[ function_constant(OPT_AlphaBlended)  ]];
 constant bool ShouldRenderFog   [[ function_constant(OPT_RenderFog)     ]];
+
+constant float2 FullscreenQuad[] =
+{
+    float2(-1, -1),
+    float2(-1,  1),
+    float2( 1,  1),
+    float2(-1, -1),
+    float2( 1,  1),
+    float2( 1, -1)
+};
+
+typedef struct
+{
+    float4 Position [[position]];
+    float2 UV;
+} SimpleVertexOutput;
 
 inline float4 GammaCorrect(float Gamma, float4 Color)
 {

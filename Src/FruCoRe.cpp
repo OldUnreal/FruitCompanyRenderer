@@ -31,8 +31,12 @@ void UFruCoReRenderDevice::StaticConstructor()
 {
     // Register renderer options
     new(GetClass(),TEXT("UseVSync"), RF_Public)UBoolProperty(CPP_PROPERTY(UseVSync), TEXT("Options"), CPF_Config);
+    new(GetClass(),TEXT("UseAA"), RF_Public)UBoolProperty(CPP_PROPERTY(UseAA), TEXT("Options"), CPF_Config);
     new(GetClass(),TEXT("MacroTextures"), RF_Public)UBoolProperty(CPP_PROPERTY(MacroTextures), TEXT("Options"), CPF_Config );
+    new(GetClass(),TEXT("OneXBlending"), RF_Public)UBoolProperty(CPP_PROPERTY(OneXBlending), TEXT("Options"), CPF_Config );
+    new(GetClass(),TEXT("NumAASamples"), RF_Public)UIntProperty(CPP_PROPERTY(NumAASamples), TEXT("Options"), CPF_Config );
     new(GetClass(),TEXT("LODBias"), RF_Public)UFloatProperty(CPP_PROPERTY(LODBias), TEXT("Options"), CPF_Config );
+    new(GetClass(),TEXT("GammaOffset"), RF_Public)UFloatProperty(CPP_PROPERTY(GammaOffset), TEXT("Options"), CPF_Config );
     
     // Generic RenderDevice settings
     VolumetricLighting = true;
@@ -49,8 +53,12 @@ void UFruCoReRenderDevice::StaticConstructor()
     
     // Frucore-specific settings
     UseVSync = false;
+    UseAA = false;
     MacroTextures = true;
+    OneXBlending = true;
     LODBias = 0.f;
+    GammaOffset = 0.f;
+    NumAASamples = 4;
 }
 
 /*-----------------------------------------------------------------------------
@@ -65,7 +73,93 @@ void UFruCoReRenderDevice::ShutdownAfterError()
 -----------------------------------------------------------------------------*/
 void UFruCoReRenderDevice::PostEditChange()
 {
-    // TODO: Should we reload and respecialize the shaders?
+    UniformsChanged = TRUE;
+    SetMSAAOptions();
+    if (UseAA && !MultisampleTexture)
+        CreateMultisampleRenderTargets();
+}
+
+/*-----------------------------------------------------------------------------
+    SetMSAAOptions - Sanitizes MSAA settings and precaches MSAA shader options
+-----------------------------------------------------------------------------*/
+void UFruCoReRenderDevice::SetMSAAOptions()
+{
+    DWORD NewOptions = 0;
+    
+    if (!UseAA)
+    {
+        CachedMSAAOptions = OPT_None;
+        return;
+    }
+ 
+    const auto OldAASamples = NumAASamples;
+    if (NumAASamples >= 8 && Device->supportsTextureSampleCount(8))
+    {
+        NumAASamples = 8;
+        NewOptions = OPT_MSAAx8;
+    }
+    else if (NumAASamples >= 4 && Device->supportsTextureSampleCount(4))
+    {
+        NumAASamples = 4;
+        NewOptions = OPT_MSAAx4;
+    }
+    else if (Device->supportsTextureSampleCount(2))
+    {
+        NumAASamples = 2;
+        NewOptions = OPT_MSAAx2;
+    }
+    else
+    {
+        NumAASamples = 1;
+        NewOptions = OPT_NoMSAA;
+    }
+    
+    if (OldAASamples != NumAASamples)
+    {
+        debugf(TEXT("Frucore: NumAASamples was %d but this device only supports %dx MSAA"), OldAASamples, NumAASamples);
+    }
+    
+    if (NewOptions != CachedMSAAOptions)
+    {
+        CachedMSAAOptions = NewOptions;
+        MSAASettingsChanged = true;
+        ActivePipelineState = nullptr;
+    }
+}
+
+/*-----------------------------------------------------------------------------
+    BuildPostprocessPipelineState
+-----------------------------------------------------------------------------*/
+MTL::RenderPipelineState* UFruCoReRenderDevice::BuildPostprocessPipelineState(const char *VertexFunctionName, const char *FragmentFunctionName, const char *StateName)
+{
+    MTL::Library* Library = GetShaderLibrary();
+    check(Library && "Could not create shader library");
+    
+    MTL::Function* VertexShader = Library->newFunction(NS::String::string(VertexFunctionName, NS::UTF8StringEncoding));
+    MTL::Function* FragmentShader = Library->newFunction(NS::String::string(FragmentFunctionName, NS::UTF8StringEncoding));
+    
+    auto PipelineDescriptor = MTL::RenderPipelineDescriptor::alloc()->init();
+    PipelineDescriptor->setVertexFunction(VertexShader);
+    PipelineDescriptor->setFragmentFunction(FragmentShader);
+    
+    auto ColorAttachment = PipelineDescriptor->colorAttachments()->object(0);
+    ColorAttachment->setPixelFormat(MTL::PixelFormat::PixelFormatBGRA8Unorm);
+    ColorAttachment->setBlendingEnabled(false);
+    PipelineDescriptor->setLabel(NS::String::string(StateName, NS::UTF8StringEncoding));
+        
+    NS::Error* Error = nullptr;
+    auto State = Device->newRenderPipelineState( PipelineDescriptor, &Error );
+    if (!State)
+    {
+        PrintNSError(TEXT("Error creating postprocess pipeline state"), Error);
+        return nullptr;
+    }
+    
+    PipelineDescriptor->release();
+    VertexShader->release();
+    FragmentShader->release();
+    
+    return State;
 }
 
 /*-----------------------------------------------------------------------------
@@ -94,7 +188,13 @@ UBOOL UFruCoReRenderDevice::Init(UViewport* InViewport, INT NewX, INT NewY, INT 
 
 	debugf(NAME_DevGraphics, TEXT("Frucore: Created Device"));
     
-    CreateDepthTexture();
+    SetMSAAOptions();
+    MSAAComposePipelineState = BuildPostprocessPipelineState("MSAAComposeVertex", "MSAAComposeFragment", "MSAA Compose");
+    GammaCorrectPipelineState = BuildPostprocessPipelineState("GammaCorrectVertex", "GammaCorrectFragment", "GammaCorrect");
+    
+    CreateRenderTargets();
+    if (UseAA)
+        CreateMultisampleRenderTargets();
     
     MTL::DepthStencilDescriptor* DepthStencilDescriptor = MTL::DepthStencilDescriptor::alloc()->init();
     DepthStencilDescriptor->setDepthCompareFunction(MTL::CompareFunction::CompareFunctionLessEqual);
@@ -113,6 +213,8 @@ UBOOL UFruCoReRenderDevice::Init(UViewport* InViewport, INT NewX, INT NewY, INT 
     RegisterTextureFormats();
 
     InitShaders();
+    
+    ActivePipelineState = nullptr;
 
 	// Great success
 	return TRUE;
@@ -152,6 +254,11 @@ UBOOL UFruCoReRenderDevice::SetRes(INT NewX, INT NewY, INT NewColorBytes, UBOOL 
 -----------------------------------------------------------------------------*/
 void UFruCoReRenderDevice::Exit()
 {
+    for (auto Tex : {DepthTexture, GammaCorrectInputTexture, MultisampleTexture, ResolveTexture, MultisampleDepthTexture, ResolveDepthTexture})
+    {
+        if (Tex)
+            Tex->release();
+    }
     if (CommandQueue)
         CommandQueue->release();
     if (Device)
@@ -209,6 +316,35 @@ void UFruCoReRenderDevice::Unlock(UBOOL Blit)
     SetProgram(SHADER_None);
     
     CommandEncoder->endEncoding();
+    
+    ActivePipelineState = nullptr;
+    auto ColorAttachment = PassDescriptor->colorAttachments()->object(0);
+    ColorAttachment->setStoreAction(MTL::StoreActionStore);
+    PassDescriptor->setDepthAttachment(nullptr);
+    
+    if (UseAA)
+    {
+        ColorAttachment->setTexture(GammaCorrectInputTexture);
+        ColorAttachment->setResolveTexture(nullptr);
+        CommandEncoder->release();
+        CommandEncoder = CommandBuffer->renderCommandEncoder(PassDescriptor);
+        CommandEncoder->setLabel(NS::String::string("MSAA Compose", NS::UTF8StringEncoding));
+        CommandEncoder->setRenderPipelineState(MSAAComposePipelineState);
+        CommandEncoder->setFragmentTexture(ResolveTexture, 0);
+        CommandEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(6));
+        CommandEncoder->endEncoding();
+    }
+    
+    ColorAttachment->setTexture(Drawable->texture());
+    CommandEncoder->release();
+    CommandEncoder = CommandBuffer->renderCommandEncoder(PassDescriptor);
+    CommandEncoder->setLabel(NS::String::string("GammaCorrect", NS::UTF8StringEncoding));
+    CommandEncoder->setRenderPipelineState(GammaCorrectPipelineState);
+    CommandEncoder->setFragmentTexture(GammaCorrectInputTexture, 0);
+    GlobalUniformsBuffer.BindBuffer(CommandEncoder);
+    CommandEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(6));
+    CommandEncoder->endEncoding();
+    
     if (Blit)
         CommandBuffer->presentDrawable(Drawable);
     CommandBuffer->commit();
@@ -360,7 +496,7 @@ void UFruCoReRenderDevice::SetProjection(FSceneNode *Frame, UBOOL bNearZ)
     const auto ChangedUniforms = 
         (StoredFovAngle != Frame->Viewport->Actor->FovAngle ||
          StoredBrightness != Frame->Viewport->GetOuterUClient()->Brightness ||
-         StoredLODBias != LODBias);
+         UniformsChanged);
     const auto ChangedViewportBounds =
         (StoredFX != Frame->FX ||
          StoredFY != Frame->FY ||
@@ -369,6 +505,8 @@ void UFruCoReRenderDevice::SetProjection(FSceneNode *Frame, UBOOL bNearZ)
     
     if (!ChangedUniforms && !ChangedViewportBounds)
         return;
+    
+    UniformsChanged = FALSE;
     
     // If we're doing this in the middle of a frame, we need to switch to a
     // different buffer. This way, all of our in-flight draw calls will still
@@ -396,7 +534,6 @@ void UFruCoReRenderDevice::SetProjection(FSceneNode *Frame, UBOOL bNearZ)
     StoredOriginX = Frame->XB;
     StoredOriginY = Frame->YB;
     StoredBrightness = Frame->Viewport->GetOuterUClient()->Brightness;
-    StoredLODBias = LODBias;
     
     auto GlobalUniforms = GlobalUniformsBuffer.GetElementPtr(0);
 
@@ -418,9 +555,11 @@ void UFruCoReRenderDevice::SetProjection(FSceneNode *Frame, UBOOL bNearZ)
     GlobalUniforms->ViewportOriginY = Frame->YB;
     GlobalUniforms->zNear = zNear;
     GlobalUniforms->zFar = zFar;
-    GlobalUniforms->Gamma = StoredBrightness;
-    GlobalUniforms->LODBias = StoredLODBias;
+    GlobalUniforms->Brightness = StoredBrightness;
+    GlobalUniforms->Gamma = 2.0 + GammaOffset;
+    GlobalUniforms->LODBias = LODBias;
     GlobalUniforms->DetailMax = 2;
+    GlobalUniforms->LightMapFactor = OneXBlending ? 2.f : 4.f;
         
     // Push to the GPU
     GlobalUniformsBuffer.BufferData(true);
@@ -439,34 +578,91 @@ void UFruCoReRenderDevice::SetProjection(FSceneNode *Frame, UBOOL bNearZ)
     // debugf(TEXT("Frucore: Set projection matrix"));
     
     if (!DepthTexture || DepthTexture->width() < Frame->FX || DepthTexture->height() < Frame->FY)
-        CreateDepthTexture();
+        CreateRenderTargets();
+    if (UseAA && (!MultisampleTexture || MSAASettingsChanged || MultisampleTexture->width() < Frame->FX || MultisampleTexture->height() < Frame->FY))
+        CreateMultisampleRenderTargets();
 }
 
 /*-----------------------------------------------------------------------------
-    CreateDepthTexture
+    CreateRenderTargets
 -----------------------------------------------------------------------------*/
-void UFruCoReRenderDevice::CreateDepthTexture()
+void UFruCoReRenderDevice::CreateRenderTargets()
 {
-    // We need to manually create a depth texture in Metal
-    if (DepthTexture)
+    for (auto Tex : {DepthTexture, GammaCorrectInputTexture})
     {
-        DepthTexture->release();
-        DepthTexture = nullptr;
+        if (Tex)
+            Tex->release();
     }
     
     auto DrawableSize = Layer->drawableSize();
     auto Width = DrawableSize.width;
     auto Height = DrawableSize.height;
-    MTL::TextureDescriptor* DepthTextureDescriptor = MTL::TextureDescriptor::texture2DDescriptor(MTL::PixelFormatDepth32Float, Width, Height, false);
     
-    // Store on the GPU. We're not going to do anything fancy with this on the CPU
-    DepthTextureDescriptor->setStorageMode(MTL::StorageModePrivate);
-    DepthTextureDescriptor->setUsage(MTL::TextureUsageRenderTarget);
-    DepthTexture = Device->newTexture(DepthTextureDescriptor);
+    MTL::TextureDescriptor* TextureDescriptor = MTL::TextureDescriptor::alloc()->init();
+    TextureDescriptor->setWidth(Width);
+    TextureDescriptor->setHeight(Height);
+    TextureDescriptor->setTextureType(MTL::TextureType2D);
+    TextureDescriptor->setStorageMode(MTL::StorageModePrivate);
+    TextureDescriptor->setUsage(MTL::TextureUsageRenderTarget);
+    TextureDescriptor->setPixelFormat(MTL::PixelFormatDepth32Float);
+    
+    DepthTexture = Device->newTexture(TextureDescriptor);
     DepthTexture->setLabel(NS::String::string("DepthStencil", NS::UTF8StringEncoding));
-    DepthTextureDescriptor->release();
     
-    debugf(TEXT("Frucore: Created depth texture"));
+    TextureDescriptor->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
+    TextureDescriptor->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
+    GammaCorrectInputTexture = Device->newTexture(TextureDescriptor);
+    GammaCorrectInputTexture->setLabel(NS::String::string("GammaCorrectInput", NS::UTF8StringEncoding));
+    
+    TextureDescriptor->release();
+}
+
+/*-----------------------------------------------------------------------------
+    CreateMultisampleRenderTargets
+-----------------------------------------------------------------------------*/
+void UFruCoReRenderDevice::CreateMultisampleRenderTargets()
+{
+    for (auto Tex : {MultisampleTexture, ResolveTexture, MultisampleDepthTexture, ResolveDepthTexture})
+    {
+        if (Tex)
+            Tex->release();
+    }
+    
+    auto DrawableSize = Layer->drawableSize();
+    auto Width = DrawableSize.width;
+    auto Height = DrawableSize.height;
+    
+    MTL::TextureDescriptor* TextureDescriptor = MTL::TextureDescriptor::alloc()->init();
+    TextureDescriptor->setWidth(Width);
+    TextureDescriptor->setHeight(Height);
+    TextureDescriptor->setSampleCount(NumAASamples);
+    TextureDescriptor->setTextureType(MTL::TextureType2DMultisample);
+    TextureDescriptor->setStorageMode(MTL::StorageModePrivate);
+    TextureDescriptor->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
+    TextureDescriptor->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
+    
+    MultisampleTexture = Device->newTexture(TextureDescriptor);
+    MultisampleTexture->setLabel(NS::String::string("Multisample", NS::UTF8StringEncoding));
+    
+    TextureDescriptor->setTextureType(MTL::TextureType2D);
+    TextureDescriptor->setSampleCount(1);
+    ResolveTexture = Device->newTexture(TextureDescriptor);
+    ResolveTexture->setLabel(NS::String::string("Resolve", NS::UTF8StringEncoding));
+    
+    TextureDescriptor->setTextureType(MTL::TextureType2DMultisample);
+    TextureDescriptor->setPixelFormat(MTL::PixelFormatDepth32Float);
+    TextureDescriptor->setSampleCount(NumAASamples);
+    MultisampleDepthTexture = Device->newTexture(TextureDescriptor);
+    MultisampleDepthTexture->setLabel(NS::String::string("MultisampleDepthStencil", NS::UTF8StringEncoding));
+    
+    TextureDescriptor->setTextureType(MTL::TextureType2D);
+    TextureDescriptor->setSampleCount(1);
+    ResolveDepthTexture = Device->newTexture(TextureDescriptor);
+    ResolveDepthTexture->setLabel(NS::String::string("ResolveDepthStencil", NS::UTF8StringEncoding));
+    
+    TextureDescriptor->release();
+    
+    //debugf(TEXT("Frucore: Created multisample textures"));
 }
 
 /*-----------------------------------------------------------------------------
@@ -477,32 +673,30 @@ void UFruCoReRenderDevice::CreateCommandEncoder(MTL::CommandBuffer *Buffer, bool
     PassDescriptor = MTL::RenderPassDescriptor::renderPassDescriptor();
     
     auto ColorAttachment = PassDescriptor->colorAttachments()->object(0);
-    if (ClearColorBuffer)
-    {
-        ColorAttachment->setLoadAction(MTL::LoadAction::LoadActionClear);
-        ColorAttachment->setStoreAction(MTL::StoreAction::StoreActionStore);
-    }
-    else
-    {
-        ColorAttachment->setLoadAction(MTL::LoadAction::LoadActionLoad);
-        ColorAttachment->setStoreAction(MTL::StoreAction::StoreActionStore);
-    }
-    ColorAttachment->setTexture(Drawable->texture());
-    
     auto DepthAttachment = PassDescriptor->depthAttachment();
-    if (ClearDepthBuffer)
+    
+    ColorAttachment->setLoadAction(ClearColorBuffer ? MTL::LoadAction::LoadActionClear : MTL::LoadAction::LoadActionLoad);
+    DepthAttachment->setLoadAction(ClearDepthBuffer ? MTL::LoadAction::LoadActionClear : MTL::LoadAction::LoadActionLoad);
+    
+    DepthAttachment->setClearDepth(1);
+    ColorAttachment->setClearColor(MTL::ClearColor(0,0,0,1));
+    
+    if (UseAA)
     {
-        DepthAttachment->setLoadAction(MTL::LoadAction::LoadActionClear);
-        DepthAttachment->setStoreAction(MTL::StoreAction::StoreActionDontCare);
+        ColorAttachment->setTexture(MultisampleTexture);
+        ColorAttachment->setResolveTexture(ResolveTexture);
+        ColorAttachment->setStoreAction(MTL::StoreAction::StoreActionStoreAndMultisampleResolve);
+        DepthAttachment->setTexture(MultisampleDepthTexture);
+        DepthAttachment->setResolveTexture(ResolveDepthTexture);
+        DepthAttachment->setStoreAction(MTL::StoreAction::StoreActionStoreAndMultisampleResolve);
     }
     else
     {
-        DepthAttachment->setLoadAction(MTL::LoadAction::LoadActionLoad);
+        ColorAttachment->setTexture(GammaCorrectInputTexture);
+        ColorAttachment->setStoreAction(MTL::StoreAction::StoreActionStore);
+        DepthAttachment->setTexture(DepthTexture);
         DepthAttachment->setStoreAction(MTL::StoreAction::StoreActionStore);
     }
-    
-    DepthAttachment->setTexture(DepthTexture);
-    DepthAttachment->setClearDepth(1);
     
     /*
     auto StencilAttachment = PassDescriptor->stencilAttachment();
@@ -515,10 +709,6 @@ void UFruCoReRenderDevice::CreateCommandEncoder(MTL::CommandBuffer *Buffer, bool
     CommandEncoder->setDepthStencilState(DepthStencilStates[CurrentDepthMode]);
     CommandEncoder->setCullMode(MTL::CullModeNone);
     CommandEncoder->setFrontFacingWinding(MTL::Winding::WindingClockwise);
-    
-    //debugf(TEXT("Frucore: Setting Metal Viewport - Origin:[%f,%f] - Resolution:%fx%f - Layer Resolution:%fx%f"),
-    //       StoredOriginX, StoredOriginY, StoredFX, StoredFY,
-    //       Layer->drawableSize().width, Layer->drawableSize().height);
     
     MTL::Viewport MetalViewport;
     MetalViewport.originX = StoredOriginX;
@@ -586,6 +776,9 @@ void UFruCoReRenderDevice::ShaderProgram::BuildPipelineStates
     PipelineDescriptor->setVertexFunction(VertexShader);
     PipelineDescriptor->setFragmentFunction(FragmentShader);
     PipelineDescriptor->setDepthAttachmentPixelFormat(MTL::PixelFormat::PixelFormatDepth32Float);
+    
+    if (Options & (OPT_MSAAx2|OPT_MSAAx4|OPT_MSAAx8))
+        PipelineDescriptor->setSampleCount(RenDev->NumAASamples);
     //PipelineDescriptor->setStencilAttachmentPixelFormat(MTL::PixelFormat::PixelFormatDepth32Float_Stencil8);
     
     auto ColorAttachment = PipelineDescriptor->colorAttachments()->object(0);
@@ -639,9 +832,9 @@ void UFruCoReRenderDevice::ShaderProgram::BuildPipelineStates
 }
 
 /*-----------------------------------------------------------------------------
-    GetPolyFlags
+ GetPolyFlagsAndShaderOptions
 -----------------------------------------------------------------------------*/
-DWORD UFruCoReRenderDevice::GetPolyFlags(DWORD PolyFlags, DWORD& Options)
+DWORD UFruCoReRenderDevice::GetPolyFlagsAndShaderOptions(DWORD PolyFlags, DWORD& Options)
 {
     if( (PolyFlags & (PF_RenderFog|PF_Translucent)) != PF_RenderFog )
         PolyFlags &= ~PF_RenderFog;
@@ -669,13 +862,15 @@ DWORD UFruCoReRenderDevice::GetPolyFlags(DWORD PolyFlags, DWORD& Options)
         if (PolyFlags & (PF_Straight_AlphaBlend|PF_Premultiplied_AlphaBlend))
             Options |= OPT_AlphaBlended;
         
+        Options |= CachedMSAAOptions;
+        
         CachedPolyFlags = PolyFlags;
-        CachedShaderOptions = Options;
+        CachedShaderOptions = Options | CachedMSAAOptions;
     }
     else
     {
         // nothing changed
-        Options = CachedShaderOptions;
+        Options = CachedShaderOptions | CachedMSAAOptions;
     }
     
     return PolyFlags;

@@ -48,5 +48,5 @@ float4 fragment DrawSimpleTriangleFragment
     device const GlobalUniforms* Uniforms [[ buffer(IDX_Uniforms) ]]
 )
 {
-    return GammaCorrect(Uniforms->Gamma * 1.7, in.DrawColor);
+    return float4(in.DrawColor.rgb * Uniforms->Brightness, in.DrawColor.a);
 }

@@ -60,12 +60,6 @@ float4 fragment DrawGouraudFragment
     constexpr sampler s( address::repeat, filter::linear );
     float4 Color = DiffuseTexture.sample(s, in.DiffuseUV, bias(Uniforms->LODBias)).rgba;
     
-    // Diffuse factor
-    //Color *= in.DiffuseInfo.x;
-    
-    // Alpha
-    //Color.a *= in.DiffuseInfo.y;
-    
     Color = ApplyPolyFlags(Color, in.LightColor);
     in.Position.w = 1.0;
     
@@ -140,8 +134,6 @@ float4 fragment DrawGouraudFragment
         TotalColor *= MacroTexColor;
     }
     
-    if (!IsModulated)
-        TotalColor = GammaCorrect(Uniforms->Gamma * 1.7, TotalColor);
-    
+    TotalColor.rgb *= Uniforms->Brightness;    
     return TotalColor;
 }

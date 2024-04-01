@@ -214,7 +214,7 @@ void UFruCoReRenderDevice::DrawGouraudProgram::PrepareDrawCall(FSceneNode* Frame
     GouraudInstanceData* Data = InstanceDataBuffer.GetCurrentElementPtr();
     
     LastShaderOptions = OPT_None;
-    PolyFlags = RenDev->GetPolyFlags(PolyFlags, LastShaderOptions);
+    PolyFlags = RenDev->GetPolyFlagsAndShaderOptions(PolyFlags, LastShaderOptions);
 
     RenDev->SetTexture(IDX_DiffuseTexture, Info, PolyFlags, 0.f);
     Data->DiffuseInfo = simd::make_float4(RenDev->BoundTextures[0]->UMult, RenDev->BoundTextures[0]->VMult, 1.f, 1.f);

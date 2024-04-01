@@ -91,12 +91,6 @@ float4 fragment DrawComplexFragment
     constexpr sampler s(address::repeat, filter::linear);
     float4 Color = DiffuseTexture.sample(s, in.DiffuseUV, bias(Uniforms->LODBias)).rgba;
     
-    // Diffuse factor
-    //Color *= in.DiffuseInfo.x;
-    
-    // Alpha
-    //Color.a *= in.DiffuseInfo.y;
-    
     Color = ApplyPolyFlags(Color, float4(1.0));
     
     float4 LightColor = float4(1.0, 1.0, 1.0, 1.0);
@@ -105,7 +99,7 @@ float4 fragment DrawComplexFragment
     if (HasLightMap)
     {
         LightColor = LightMap.sample(s, in.LightMapUV, bias(Uniforms->LODBias)).bgra;
-        LightColor.rgb *= 255.0 / 127.0;
+        LightColor.rgb = LightColor.rgb * Uniforms->LightMapFactor;
         LightColor.a = 1.0;
     }
     
@@ -151,10 +145,16 @@ float4 fragment DrawComplexFragment
     
     float4 FogColor = float4(0.0);
     if (HasFogMap)
-        FogColor = FogMap.sample(s, in.FogMapUV, bias(Uniforms->LODBias)).rgba * 2.0;
+    {
+        FogColor = FogMap.sample(s, in.FogMapUV, bias(Uniforms->LODBias));
+        FogColor.rgb *= 2.0;
+    }
     
+    TotalColor.rgb *= Uniforms->Brightness;
+    LightColor.rgb *= Uniforms->Brightness;
+    FogColor.rgb *= Uniforms->Brightness;
     if (!IsModulated)
-        return GammaCorrect(Uniforms->Gamma * 1.7, TotalColor * LightColor + FogColor);
+        return TotalColor * LightColor + FogColor;
     
     return TotalColor + FogColor;
 }

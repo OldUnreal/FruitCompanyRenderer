@@ -65,7 +65,7 @@ void UFruCoReRenderDevice::DrawComplexSurface(FSceneNode *Frame, FSurfaceInfo &S
     auto DrawData = Shader->InstanceDataBuffer.GetCurrentElementPtr();
     
     DWORD Options = OPT_None;
-    const auto PolyFlags = GetPolyFlags(Surface.PolyFlags, Options);
+    const auto PolyFlags = GetPolyFlagsAndShaderOptions(Surface.PolyFlags, Options);
     
     // Bind all textures
     SetTextureHelper(this, DrawData, IDX_DiffuseTexture, *Surface.Texture, PolyFlags, 0.0, &DrawData->DiffuseUV, &DrawData->DiffuseInfo);

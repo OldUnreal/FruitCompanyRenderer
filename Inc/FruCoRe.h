@@ -47,7 +47,11 @@ class UFruCoReRenderDevice : public URenderDevice
     //
     UBOOL MacroTextures;
     UBOOL UseVSync;
+    UBOOL UseAA;
+    UBOOL OneXBlending;
+    INT NumAASamples;
     FLOAT LODBias;
+    FLOAT GammaOffset;
     
     //
     // A BufferObject describes a GPU-mapped buffer object
@@ -408,6 +412,10 @@ class UFruCoReRenderDevice : public URenderDevice
         ADD_OPTION(OPT_Modulated);
         ADD_OPTION(OPT_Masked);
         ADD_OPTION(OPT_AlphaBlended);
+        ADD_OPTION(OPT_NoMSAA);
+        ADD_OPTION(OPT_MSAAx2);
+        ADD_OPTION(OPT_MSAAx4);
+        ADD_OPTION(OPT_MSAAx8);
         if (Result.Len() == 0)
             Result = TEXT("OPT_None");
         return Result;
@@ -733,16 +741,19 @@ class UFruCoReRenderDevice : public URenderDevice
     // Renderer-specific functions
     //
     void SetProgram(INT Program);
-    DWORD GetPolyFlags(DWORD PolyFlags, DWORD& Options);
+    DWORD GetPolyFlagsAndShaderOptions(DWORD PolyFlags, DWORD& Options);
     static BlendMode GetBlendMode(DWORD PolyFlags);
     void SetDepthMode(DepthMode Mode);
     void SetTexture(INT TexNum, FTextureInfo& Info, DWORD PolyFlags, FLOAT PanBias);
     void SetProjection(FSceneNode* Frame, UBOOL bNearZ);
-    void CreateDepthTexture();
+    void CreateRenderTargets();
+    void CreateMultisampleRenderTargets();
     void RegisterTextureFormats();
     void CreateCommandEncoder(MTL::CommandBuffer* Buffer, bool ClearDepthBuffer=true, bool ClearColorBuffer=true);
     MTL::Library* GetShaderLibrary();
     void SetPipelineState(const MTL::RenderPipelineState* State);
+    void SetMSAAOptions();
+    MTL::RenderPipelineState* BuildPostprocessPipelineState(const char* VertexFunctionName, const char* FragmentFunctionName, const char* StateName);
 
 //private:
     // Persistent state
@@ -752,9 +763,45 @@ class UFruCoReRenderDevice : public URenderDevice
 	MTL::Device*                    Device;
     BufferObject<GlobalUniforms>    GlobalUniformsBuffer;
     MTL::CommandQueue*              CommandQueue;
-    MTL::Texture*                   DepthTexture;
     MTL::DepthStencilState*         DepthStencilStates[DEPTH_Max];
     DepthMode                       CurrentDepthMode;
+    
+    // Render pipeline options
+    //
+    // Without MSAA:
+    // -------------
+    //
+    // PipelineStates: Draw[Complex|Gouraud|Tile|Simple]
+    // == OUTPUT ==>
+    // RenderTargets: GammaCorrectInputTexture(Color) / DepthTexture(Depth)
+    // == INPUT  ==>
+    // PipelineStates: GammaCorrect
+    // == OUTPUT ==>
+    // RenderTargets: Drawable->texture
+    //
+    // With MSAA:
+    // ----------
+    //
+    // PipelineStates: Draw[Complex|Gouraud|Tile|Simple]
+    // == OUTPUT ==>
+    // RenderTargets: ResolveTexture(Color) / ResolveDepthTexture(Depth)
+    // == INPUT  ==>
+    // PipelineStates: MSAACompose
+    // == OUTPUT ==>
+    // RenderTargets: GammaCorrectInputTexture(Color) / DepthTexture(Depth)
+    // == INPUT  ==>
+    // PipelineStates: GammaCorrect
+    // == OUTPUT ==>
+    // RenderTargets: Drawable->texture
+    
+    MTL::Texture*                   DepthTexture;
+    MTL::Texture*                   MultisampleTexture;
+    MTL::Texture*                   ResolveTexture;
+    MTL::Texture*                   MultisampleDepthTexture;
+    MTL::Texture*                   ResolveDepthTexture;
+    MTL::Texture*                   GammaCorrectInputTexture;
+    MTL::RenderPipelineState*       MSAAComposePipelineState;
+    MTL::RenderPipelineState*       GammaCorrectPipelineState;
     
     // Texture state
     typedef BYTE* (*ConversionFunc)(FTextureInfo&, DWORD, INT);
@@ -796,12 +843,6 @@ class UFruCoReRenderDevice : public URenderDevice
     FLOAT                           zNear;
     FLOAT                           zFar;
     
-    // Brightness and gamma
-    FLOAT                           StoredBrightness;
-    
-    // Level of detail
-    FLOAT                           StoredLODBias;
-    
     // Screen flashes
     FPlane                          FlashScale;
     FPlane                          FlashFog;
@@ -809,9 +850,18 @@ class UFruCoReRenderDevice : public URenderDevice
     // Cached info for polyflag => shader options conversion
     DWORD                           CachedPolyFlags;
     DWORD                           CachedShaderOptions;
+    DWORD                           CachedMSAAOptions;
     
     // Hack: When we detect the first draw call within PostRender, we clear the Z buffer so the weapon and HUD render on top of anything else
     BOOL                            DrawingWeapon;
+    
+    //
+    // Cached Uniforms
+    //
+    
+    UBOOL                           UniformsChanged;
+    UBOOL                           MSAASettingsChanged;
+    FLOAT                           StoredBrightness;
 
 	//
 	// Helper functions

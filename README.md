@@ -12,12 +12,12 @@ This renderer builds and can be used in game. The following features are current
 * Basic support for BSP, mesh, tile, and simple triangle rendering
 * Light maps, fog maps, detail textures, macro textures
 * Screenshots
+* Multisample Anti-Aliasing (2x, 4x, and/or 8x, depending on what the device supports)
 
 The following features are not implemented (yet):
 
 * Editor support
 * Line rendering
-* Anti-Aliasing
 * LODBias
 * Bump Mapping
 

@@ -42,16 +42,16 @@ void UFruCoReRenderDevice::Draw2DPoint(FSceneNode* Frame, FPlane Color, DWORD Li
 -----------------------------------------------------------------------------*/
 void UFruCoReRenderDevice::EndFlash()
 {
-    SetProgram(SHADER_Simple_Triangle);
-    auto Shader = dynamic_cast<DrawSimpleTriangleProgram*>(Shaders[SHADER_Simple_Triangle]);
-    
     if( FlashScale == FPlane(0.5,0.5,0.5,0) && FlashFog == FPlane(0,0,0,0) )
         return;
+    
+    SetProgram(SHADER_Simple_Triangle);
+    auto Shader = dynamic_cast<DrawSimpleTriangleProgram*>(Shaders[SHADER_Simple_Triangle]);
 
     if (!Shader->VertexBuffer.CanBuffer(6) || !Shader->InstanceDataBuffer.CanBuffer(1))
         Shader->RotateBuffers();
     
-    Shader->SelectPipelineState(GetBlendMode(PF_Highlighted), OPT_None);
+    Shader->SelectPipelineState(GetBlendMode(PF_Highlighted), static_cast<ShaderOptions>(CachedMSAAOptions));
     
     auto InstanceData = Shader->InstanceDataBuffer.GetCurrentElementPtr();
     InstanceData->DrawColor = simd::make_float4(FlashFog.X, FlashFog.Y, FlashFog.Z, 1.f - Min(FlashScale.X*2.f,1.f));

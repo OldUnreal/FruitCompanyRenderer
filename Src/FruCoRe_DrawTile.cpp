@@ -18,7 +18,7 @@ void UFruCoReRenderDevice::DrawTile(FSceneNode* Frame, FTextureInfo& Info, FLOAT
     auto Shader = dynamic_cast<DrawTileProgram*>(Shaders[SHADER_Tile]);
 
     DWORD Options = OPT_None;
-    PolyFlags = GetPolyFlags(PolyFlags, Options);
+    PolyFlags = GetPolyFlagsAndShaderOptions(PolyFlags, Options);
     
     if (PolyFlags & PF_Modulated)
     {
