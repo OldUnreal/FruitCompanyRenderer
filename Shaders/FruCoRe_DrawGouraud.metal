@@ -133,7 +133,8 @@ float4 fragment DrawGouraudFragment
         MacroTexColor = float4(hsvMacroTex, 1.0);
         TotalColor *= MacroTexColor;
     }
-    
-    TotalColor.rgb *= Uniforms->Brightness;    
+
+    if (!IsModulated)
+	    TotalColor.rgb *=  Uniforms->Brightness;    
     return TotalColor;
 }
