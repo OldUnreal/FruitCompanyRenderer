@@ -822,7 +822,7 @@ class UFruCoReRenderDevice : public URenderDevice
         FLOAT               VPan;
     };
     TMap<INT, TextureFormat>        TextureFormats;
-    TMap<QWORD, CachedTexture>      BindMap;
+    TMap<QWORD, CachedTexture*>     BindMap;
     
     // Per-frame state
     const MTL::RenderPipelineState* ActivePipelineState{};

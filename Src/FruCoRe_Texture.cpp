@@ -90,7 +90,7 @@ void UFruCoReRenderDevice::SetTexture(INT TexNum, FTextureInfo &Info, DWORD Poly
 {
     FixCacheID(Info, PolyFlags);
     
-    CachedTexture* Texture = BindMap.Find(Info.CacheID);
+    CachedTexture* Texture = BindMap.FindRef(Info.CacheID);
 
 #if UNREAL_TOURNAMENT_OLDUNREAL
     if (Texture && !Info.NeedsRealtimeUpdate(Texture->RealTimeChangeCount))
@@ -173,26 +173,19 @@ void UFruCoReRenderDevice::SetTexture(INT TexNum, FTextureInfo &Info, DWORD Poly
             
             MetalTexture->replaceRegion(MTL::Region(0, 0, 0, USize, VSize, 1), MipLevel, TextureData, USize * TextureFormat->BlockSize);
         }
-        
-        Texture = &BindMap.Set(Info.CacheID,
-							   {Info.CacheID,
-								MetalTexture,
-#if UNREAL_TOURNAMENT_OLDUNREAL
-								Info.Texture ? Info.Texture->RealtimeChangeCount : 0,
-#elif ENGINE_VERSION==227
-								static_cast<INT>(Info.RenderTag),
-#else
-								0,
-#endif
-								0.f,
-								0.f,
-								0.f,
-								0.f}
-			);
 
-#if ENGINE_VERSION==227
-		Texture->RealTimeChangeCount = Info.RenderTag;
+		Texture = new CachedTexture;
+		Texture->CacheID = Info.CacheID;
+		Texture->Texture = MetalTexture;
+#if UNREAL_TOURNAMENT_OLDUNREAL
+		Texture->RealTimeChangeCount = Info.Texture ? Info.Texture->RealtimeChangeCount : 0;
+#elif ENGINE_VERSION==227
+		Texture->RealTimeChangeCount = static_cast<INT>(Info.RenderTag);
+#else
+		Texture->RealTimeChangeCount = 0;
 #endif
+				
+        BindMap.Set(Info.CacheID, Texture);
 		
         if (bShouldDeleteTextureData)
             delete[] TextureData;

@@ -271,14 +271,15 @@ void UFruCoReRenderDevice::Exit()
 -----------------------------------------------------------------------------*/
 void UFruCoReRenderDevice::Flush(INT AllowPrecache)
 {
-    for (auto It = TMap<QWORD, CachedTexture>::TIterator(BindMap); It; ++It)
+    for (auto It = TMap<QWORD, CachedTexture*>::TIterator(BindMap); It; ++It)
     {
         auto Tex = It.Value();
-        if (Tex.Texture)
+        if (Tex->Texture)
         {
-            Tex.Texture->release();
-            Tex.Texture = nullptr;
+            Tex->Texture->release();
+            Tex->Texture = nullptr;
         }
+		delete Tex;
     }
     BindMap.Empty();
 }
