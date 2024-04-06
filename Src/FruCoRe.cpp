@@ -415,10 +415,27 @@ void UFruCoReRenderDevice::GetStats(TCHAR* Result)
 -----------------------------------------------------------------------------*/
 void UFruCoReRenderDevice::ReadPixels(FColor* Pixels)
 {
-    INT Width, Height;
-    auto Window = reinterpret_cast<SDL_Window*>(Viewport->GetWindow());
-    SDL_GetWindowSizeInPixels(Window, &Width, &Height);
-    SDL_RenderReadPixels(Renderer, nullptr, SDL_PIXELFORMAT_ARGB8888, Pixels, Width * 4);
+    check(!CommandEncoder);
+    Drawable = Layer->nextDrawable();
+    CommandBuffer = CommandQueue->commandBuffer();
+
+	// Spawn a blit encoder to synchronize the CPU-accessible copy of the
+	// drawable with its GPU counterpart
+    auto BlitEncoder = CommandBuffer->blitCommandEncoder();
+    BlitEncoder->synchronizeResource(Drawable->texture());
+    BlitEncoder->endEncoding();
+    BlitEncoder->release();
+
+	// Commit and wait for the synchronization
+    CommandBuffer->commit();
+    CommandBuffer->waitUntilCompleted();
+    CommandBuffer->release();
+    CommandBuffer = nullptr;
+
+	// And now just read the drawable. Easy peasy
+    MTL::Region Region(StoredOriginX, StoredOriginY, StoredFX, StoredFY);
+    Drawable->texture()->getBytes(Pixels, StoredFX * 4, Region, 0);
+	Drawable->release();
 }
 
 /*-----------------------------------------------------------------------------
