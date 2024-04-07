@@ -300,20 +300,14 @@ UBOOL UFruCoReRenderDevice::Exec(const TCHAR* Cmd, FOutputDevice& Ar)
 -----------------------------------------------------------------------------*/
 void UFruCoReRenderDevice::Lock(FPlane _FlashScale, FPlane _FlashFog, FPlane ScreenClear, DWORD RenderLockFlags, BYTE* HitData, INT* HitSize)
 {
-	if (RendererSuspended)
+	if (NumInFlightFrames >= MAX_IN_FLIGHT_FRAMES)
 	{
-		if (NumInFlightFrames < MAX_IN_FLIGHT_FRAMES)
-			RendererSuspended = FALSE;
-		else
-			return;
+		RendererSuspended = TRUE;
+		return;
 	}
 
-	if (OSAtomicIncrement32(&NumInFlightFrames) > MAX_IN_FLIGHT_FRAMES)
-	{
-		OSAtomicDecrement32(&NumInFlightFrames);
-		RendererSuspended = TRUE;
-		return;;
-	}
+	RendererSuspended = FALSE;
+	OSAtomicIncrement32(&NumInFlightFrames);
 	
     SetDepthMode(DEPTH_Test_And_Write);
     DrawingWeapon = false;
