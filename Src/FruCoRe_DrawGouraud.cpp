@@ -226,7 +226,7 @@ void UFruCoReRenderDevice::DrawGouraudProgram::PrepareDrawCall(FSceneNode* Frame
     PolyFlags = RenDev->GetPolyFlagsAndShaderOptions(PolyFlags, LastShaderOptions);
 
     RenDev->SetTexture(IDX_DiffuseTexture, Info, PolyFlags, 0.f);
-    Data->DiffuseInfo = simd::make_float4(RenDev->BoundTextures[0]->UMult, RenDev->BoundTextures[0]->VMult, 1.f, 1.f);
+    Data->DiffuseInfo = simd::make_float4(RenDev->BoundTextures[IDX_DiffuseTexture]->UMult, RenDev->BoundTextures[IDX_DiffuseTexture]->VMult, 1.f, 1.f);
     
     if (Info.Texture)
     {
@@ -240,10 +240,10 @@ void UFruCoReRenderDevice::DrawGouraudProgram::PrepareDrawCall(FSceneNode* Frame
 		DetailTextureInfo = *Info.Texture->DetailTexture->GetTexture(INDEX_NONE, RenDev);
 #else
         Info.Texture->DetailTexture->Lock(DetailTextureInfo, Frame->Viewport->CurrentTime, -1, RenDev);
-        RenDev->SetTexture(IDX_DetailTexture, DetailTextureInfo, PolyFlags, 0.f);
 #endif
-        Data->DetailMacroInfo[0] = RenDev->BoundTextures[1]->UMult;
-        Data->DetailMacroInfo[1] = RenDev->BoundTextures[1]->VMult;
+		RenDev->SetTexture(IDX_DetailTexture, DetailTextureInfo, PolyFlags, 0.f);
+        Data->DetailMacroInfo[0] = RenDev->BoundTextures[IDX_DetailTexture]->UMult;
+        Data->DetailMacroInfo[1] = RenDev->BoundTextures[IDX_DetailTexture]->VMult;
         LastShaderOptions |= OPT_DetailTexture;
     }
 
@@ -253,10 +253,10 @@ void UFruCoReRenderDevice::DrawGouraudProgram::PrepareDrawCall(FSceneNode* Frame
 		MacroTextureInfo = *Info.Texture->MacroTexture->GetTexture(INDEX_NONE, RenDev);
 #else
         Info.Texture->MacroTexture->Lock(MacroTextureInfo, Frame->Viewport->CurrentTime, -1, RenDev);
-        RenDev->SetTexture(IDX_MacroTexture, MacroTextureInfo, PolyFlags, 0.f);
 #endif
-        Data->DetailMacroInfo[2] = RenDev->BoundTextures[2]->UMult;
-        Data->DetailMacroInfo[3] = RenDev->BoundTextures[2]->VMult;
+		RenDev->SetTexture(IDX_MacroTexture, MacroTextureInfo, PolyFlags, 0.f);
+        Data->DetailMacroInfo[2] = RenDev->BoundTextures[IDX_MacroTexture]->UMult;
+        Data->DetailMacroInfo[3] = RenDev->BoundTextures[IDX_MacroTexture]->VMult;
         LastShaderOptions |= OPT_MacroTexture;
     }
     
