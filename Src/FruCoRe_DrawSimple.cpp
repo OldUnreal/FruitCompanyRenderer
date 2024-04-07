@@ -42,6 +42,9 @@ void UFruCoReRenderDevice::Draw2DPoint(FSceneNode* Frame, FPlane Color, DWORD Li
 -----------------------------------------------------------------------------*/
 void UFruCoReRenderDevice::EndFlash()
 {
+	if (RendererSuspended)
+		return;
+	
     if( FlashScale == FPlane(0.5,0.5,0.5,0) && FlashFog == FPlane(0,0,0,0) )
         return;
     

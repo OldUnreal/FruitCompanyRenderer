@@ -56,6 +56,9 @@ static simd::float4 FVectorToFloat4(FVector& Vec)
 
 void UFruCoReRenderDevice::DrawComplexSurface(FSceneNode *Frame, FSurfaceInfo &Surface, FSurfaceFacet &Facet)
 {
+	if (RendererSuspended)
+		return;
+	
     SetProgram(SHADER_Complex);
     auto Shader = dynamic_cast<DrawComplexProgram*>(Shaders[SHADER_Complex]);
     

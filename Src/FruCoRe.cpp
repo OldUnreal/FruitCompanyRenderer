@@ -9,6 +9,7 @@
 #include "Render.h"
 #define GENERATE_METAL_IMPLEMENTATION
 #include "FruCoRe.h"
+#include <libkern/OSAtomic.h>
 
 /*-----------------------------------------------------------------------------
 	Package Registration
@@ -299,13 +300,28 @@ UBOOL UFruCoReRenderDevice::Exec(const TCHAR* Cmd, FOutputDevice& Ar)
 -----------------------------------------------------------------------------*/
 void UFruCoReRenderDevice::Lock(FPlane _FlashScale, FPlane _FlashFog, FPlane ScreenClear, DWORD RenderLockFlags, BYTE* HitData, INT* HitSize)
 {
+	if (RendererSuspended)
+	{
+		if (NumInFlightFrames < MAX_IN_FLIGHT_FRAMES)
+			RendererSuspended = FALSE;
+		else
+			return;
+	}
+
+	if (OSAtomicIncrement32(&NumInFlightFrames) > MAX_IN_FLIGHT_FRAMES)
+	{
+		OSAtomicDecrement32(&NumInFlightFrames);
+		RendererSuspended = TRUE;
+		return;;
+	}
+	
     SetDepthMode(DEPTH_Test_And_Write);
     DrawingWeapon = false;
     FlashScale = _FlashScale;
     FlashFog = _FlashFog;
     Drawable = Layer->nextDrawable();
     CommandBuffer = CommandQueue->commandBuffer();
-    
+
     CreateCommandEncoder(CommandBuffer);
 }
 
@@ -314,6 +330,9 @@ void UFruCoReRenderDevice::Lock(FPlane _FlashScale, FPlane _FlashFog, FPlane Scr
 -----------------------------------------------------------------------------*/
 void UFruCoReRenderDevice::Unlock(UBOOL Blit)
 {
+	if (RendererSuspended)
+		return;
+	
     SetProgram(SHADER_None);
     
     CommandEncoder->endEncoding();
@@ -348,6 +367,11 @@ void UFruCoReRenderDevice::Unlock(UBOOL Blit)
     
     if (Blit)
         CommandBuffer->presentDrawable(Drawable);
+
+	CommandBuffer->addCompletedHandler(^void( MTL::CommandBuffer* Buf ){
+			OSAtomicDecrement32(&NumInFlightFrames);
+		});	
+	
     CommandBuffer->commit();
     
     CommandEncoder->release();
@@ -361,6 +385,9 @@ void UFruCoReRenderDevice::Unlock(UBOOL Blit)
 -----------------------------------------------------------------------------*/
 void UFruCoReRenderDevice::ClearZ(FSceneNode* Frame)
 {
+	if (RendererSuspended)
+		return;
+	
     INT OldProgram = ActiveProgram;
     SetProgram(SHADER_None);
     
@@ -450,6 +477,9 @@ void UFruCoReRenderDevice::DrawStats(FSceneNode* Frame)
 -----------------------------------------------------------------------------*/
 void UFruCoReRenderDevice::SetSceneNode(FSceneNode* Frame)
 {
+	if (RendererSuspended)
+		return;
+	
     SetProjection(Frame, 0);
 }
 
@@ -724,7 +754,8 @@ void UFruCoReRenderDevice::CreateCommandEncoder(MTL::CommandBuffer *Buffer, bool
     */ 
     
     CommandEncoder = CommandBuffer->renderCommandEncoder(PassDescriptor);
-    CommandEncoder->setDepthStencilState(DepthStencilStates[CurrentDepthMode]);
+	check(CommandEncoder);
+	CommandEncoder->setDepthStencilState(DepthStencilStates[CurrentDepthMode]);
     CommandEncoder->setCullMode(MTL::CullModeNone);
     CommandEncoder->setFrontFacingWinding(MTL::Winding::WindingClockwise);
     

@@ -15,6 +15,9 @@
 
 void UFruCoReRenderDevice::DrawGouraudPolygon(FSceneNode* Frame, FTextureInfo& Info, FTransTexture** Pts, INT NumPts, DWORD PolyFlags, FSpanBuffer* Span)
 {
+	if (RendererSuspended)
+		return;
+	
     SetProgram(SHADER_Gouraud);
     auto Shader = dynamic_cast<DrawGouraudProgram*>(Shaders[SHADER_Gouraud]);
     
@@ -58,6 +61,9 @@ void UFruCoReRenderDevice::DrawGouraudPolygon(FSceneNode* Frame, FTextureInfo& I
 #if ENGINE_VERSION==227 || UNREAL_TOURNAMENT_OLDUNREAL
 void UFruCoReRenderDevice::DrawGouraudPolyList(FSceneNode* Frame, FTextureInfo& Info, FTransTexture* Pts, INT NumPts, DWORD PolyFlags, FSpanBuffer* Span)
 {
+	if (RendererSuspended)
+		return;
+	
     SetProgram(SHADER_Gouraud);
     auto Shader = dynamic_cast<DrawGouraudProgram*>(Shaders[SHADER_Gouraud]);
     
@@ -118,6 +124,9 @@ void UFruCoReRenderDevice::DrawGouraudPolyList(FSceneNode* Frame, FTextureInfo& 
 #if UNREAL_TOURNAMENT_OLDUNREAL
 void UFruCoReRenderDevice::DrawGouraudTriangles(const FSceneNode* Frame, const FTextureInfo& Info, FTransTexture* const Pts, INT NumPts, DWORD PolyFlags, DWORD DataFlags, FSpanBuffer* Span)
 {
+	if (RendererSuspended)
+		return;
+	
     SetProgram(SHADER_Gouraud);
     auto Shader = dynamic_cast<DrawGouraudProgram*>(Shaders[SHADER_Gouraud]);
     

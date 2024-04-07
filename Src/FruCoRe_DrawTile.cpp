@@ -14,6 +14,9 @@
 -----------------------------------------------------------------------------*/
 void UFruCoReRenderDevice::DrawTile(FSceneNode* Frame, FTextureInfo& Info, FLOAT X, FLOAT Y, FLOAT XL, FLOAT YL, FLOAT U, FLOAT V, FLOAT UL, FLOAT VL, class FSpanBuffer* Span, FLOAT Z, FPlane Color, FPlane Fog, DWORD PolyFlags)
 {
+	if (RendererSuspended)
+		return;
+	
     SetProgram(SHADER_Tile);
     auto Shader = dynamic_cast<DrawTileProgram*>(Shaders[SHADER_Tile]);
 

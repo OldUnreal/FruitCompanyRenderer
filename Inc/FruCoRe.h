@@ -30,6 +30,7 @@
 #define DRAWGOURAUD_VERTEXBUFFER_SIZE (DRAWGOURAUD_INSTANCEDATA_SIZE * 128)
 #define DRAWSIMPLE_INSTANCEDATA_SIZE 128
 #define DRAWSIMPLE_VERTEXBUFFER_SIZE (DRAWSIMPLE_INSTANCEDATA_SIZE * 6) // We always have 6 vertices per instance
+#define MAX_IN_FLIGHT_FRAMES 10
 #define NUMBUFFERS 16
 
 #if UNREAL_TOURNAMENT_OLDUNREAL
@@ -862,6 +863,13 @@ class UFruCoReRenderDevice : public URenderDevice
     UBOOL                           UniformsChanged;
     UBOOL                           MSAASettingsChanged;
     FLOAT                           StoredBrightness;
+
+	//
+	// Suspension support
+	//
+	INT                             NumInFlightFrames;
+	BOOL                            RendererSuspended;
+	
 
 	//
 	// Helper functions
