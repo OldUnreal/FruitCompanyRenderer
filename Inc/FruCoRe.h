@@ -50,6 +50,7 @@ class UFruCoReRenderDevice : public URenderDevice
     UBOOL UseVSync;
     UBOOL UseAA;
     UBOOL OneXBlending;
+	UBOOL UseGammaCorrection;
     INT NumAASamples;
     FLOAT LODBias;
     FLOAT GammaOffset;

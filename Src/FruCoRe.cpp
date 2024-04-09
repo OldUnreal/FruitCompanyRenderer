@@ -35,6 +35,7 @@ void UFruCoReRenderDevice::StaticConstructor()
     new(GetClass(),TEXT("UseAA"), RF_Public)UBoolProperty(CPP_PROPERTY(UseAA), TEXT("Options"), CPF_Config);
     new(GetClass(),TEXT("MacroTextures"), RF_Public)UBoolProperty(CPP_PROPERTY(MacroTextures), TEXT("Options"), CPF_Config );
     new(GetClass(),TEXT("OneXBlending"), RF_Public)UBoolProperty(CPP_PROPERTY(OneXBlending), TEXT("Options"), CPF_Config );
+	new(GetClass(),TEXT("UseGammaCorrection"), RF_Public)UBoolProperty(CPP_PROPERTY(UseGammaCorrection), TEXT("Options"), CPF_Config );
     new(GetClass(),TEXT("NumAASamples"), RF_Public)UIntProperty(CPP_PROPERTY(NumAASamples), TEXT("Options"), CPF_Config );
     new(GetClass(),TEXT("LODBias"), RF_Public)UFloatProperty(CPP_PROPERTY(LODBias), TEXT("Options"), CPF_Config );
     new(GetClass(),TEXT("GammaOffset"), RF_Public)UFloatProperty(CPP_PROPERTY(GammaOffset), TEXT("Options"), CPF_Config );
@@ -57,6 +58,7 @@ void UFruCoReRenderDevice::StaticConstructor()
     UseAA = false;
     MacroTextures = true;
     OneXBlending = true;
+	UseGammaCorrection = true;
     LODBias = 0.f;
     GammaOffset = 0.f;
     NumAASamples = 4;
@@ -338,8 +340,8 @@ void UFruCoReRenderDevice::Unlock(UBOOL Blit)
     
     if (UseAA)
     {
-        ColorAttachment->setTexture(GammaCorrectInputTexture);
-        ColorAttachment->setResolveTexture(nullptr);
+		ColorAttachment->setTexture(UseGammaCorrection ? GammaCorrectInputTexture : Drawable->texture());
+		ColorAttachment->setResolveTexture(nullptr);
         CommandEncoder->release();
         CommandEncoder = CommandBuffer->renderCommandEncoder(PassDescriptor);
         CommandEncoder->setLabel(NS::String::string("MSAA Compose", NS::UTF8StringEncoding));
@@ -348,24 +350,27 @@ void UFruCoReRenderDevice::Unlock(UBOOL Blit)
         CommandEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(6));
         CommandEncoder->endEncoding();
     }
-    
-    ColorAttachment->setTexture(Drawable->texture());
-    CommandEncoder->release();
-    CommandEncoder = CommandBuffer->renderCommandEncoder(PassDescriptor);
-    CommandEncoder->setLabel(NS::String::string("GammaCorrect", NS::UTF8StringEncoding));
-    CommandEncoder->setRenderPipelineState(GammaCorrectPipelineState);
-    CommandEncoder->setFragmentTexture(GammaCorrectInputTexture, 0);
-    GlobalUniformsBuffer.BindBuffer(CommandEncoder);
-    CommandEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(6));
-    CommandEncoder->endEncoding();
+
+	if (UseGammaCorrection)
+	{
+		ColorAttachment->setTexture(Drawable->texture());
+		CommandEncoder->release();
+		CommandEncoder = CommandBuffer->renderCommandEncoder(PassDescriptor);
+		CommandEncoder->setLabel(NS::String::string("GammaCorrect", NS::UTF8StringEncoding));
+		CommandEncoder->setRenderPipelineState(GammaCorrectPipelineState);
+		CommandEncoder->setFragmentTexture(GammaCorrectInputTexture, 0);
+		GlobalUniformsBuffer.BindBuffer(CommandEncoder);
+		CommandEncoder->drawPrimitives(MTL::PrimitiveTypeTriangle, NS::UInteger(0), NS::UInteger(6));
+		CommandEncoder->endEncoding();
+	}
     
     if (Blit)
         CommandBuffer->presentDrawable(Drawable);
 
 	CommandBuffer->addCompletedHandler(^void( MTL::CommandBuffer* Buf ){
 			OSAtomicDecrement32(&NumInFlightFrames);
-		});	
-	
+		});
+		
     CommandBuffer->commit();
     
     CommandEncoder->release();
