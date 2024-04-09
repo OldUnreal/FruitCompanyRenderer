@@ -709,6 +709,8 @@ void UFruCoReRenderDevice::CreateMultisampleRenderTargets()
     
     TextureDescriptor->release();
     
+    MSAASettingsChanged = false;
+    
     //debugf(TEXT("Frucore: Created multisample textures"));
 }
 
@@ -739,7 +741,7 @@ void UFruCoReRenderDevice::CreateCommandEncoder(MTL::CommandBuffer *Buffer, bool
     }
     else
     {
-        ColorAttachment->setTexture(GammaCorrectInputTexture);
+        ColorAttachment->setTexture(UseGammaCorrection ? GammaCorrectInputTexture : Drawable->texture());
         ColorAttachment->setStoreAction(MTL::StoreAction::StoreActionStore);
         DepthAttachment->setTexture(DepthTexture);
         DepthAttachment->setStoreAction(MTL::StoreAction::StoreActionStore);
