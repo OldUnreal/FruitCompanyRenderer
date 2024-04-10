@@ -274,7 +274,7 @@ void UFruCoReRenderDevice::Exit()
 -----------------------------------------------------------------------------*/
 void UFruCoReRenderDevice::Flush(INT AllowPrecache)
 {
-    for (auto It = TMap<QWORD, CachedTexture*>::TIterator(BindMap); It; ++It)
+    for (auto It = TMap<FCacheID, CachedTexture*>::TIterator(BindMap); It; ++It)
     {
         auto Tex = It.Value();
         if (Tex->Texture)

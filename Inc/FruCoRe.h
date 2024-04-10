@@ -9,6 +9,7 @@
 #pragma once
 
 #include "Render.h"
+#include "DataWrapper.h"
 #define BOOL NOT_REALLY_BOOL // Hack to deal with the conflicting BOOL typedef in Apple's headers
 
 #ifdef GENERATE_METAL_IMPLEMENTATION
@@ -824,7 +825,14 @@ class UFruCoReRenderDevice : public URenderDevice
         FLOAT               VPan;
     };
     TMap<INT, TextureFormat>        TextureFormats;
-    TMap<QWORD, CachedTexture*>     BindMap;
+    //
+    // Cache ID wrapper to ensure proper TMap hashing behaviour
+    //
+    struct FCacheID : public TDataWrapper<QWORD>
+    {
+        FCacheID( QWORD InValue ) : TDataWrapper(InValue) {}
+    };
+    TMap<FCacheID, CachedTexture*>     BindMap;
     
     // Per-frame state
     const MTL::RenderPipelineState* ActivePipelineState{};
@@ -877,6 +885,12 @@ class UFruCoReRenderDevice : public URenderDevice
 	//
 	static void PrintNSError(const TCHAR* Prefix, const NS::Error* Error);
 };
+    
+static inline DWORD GetTypeHash( const UFruCoReRenderDevice::FCacheID& A)
+{
+    QWORD Value = A.GetValue();
+    return ((DWORD)(Value>>8))^((DWORD)(Value>>16));
+}
 
 #define AUTO_INITIALIZE_REGISTRANTS_FRUCORE \
 	UFruCoReRenderDevice::StaticClass();
