@@ -624,9 +624,9 @@ void UFruCoReRenderDevice::SetProjection(FSceneNode *Frame, UBOOL bNearZ)
     
     // debugf(TEXT("Frucore: Set projection matrix"));
     
-    if (!DepthTexture || DepthTexture->width() < Frame->FX || DepthTexture->height() < Frame->FY)
+    if (!DepthTexture || ChangedViewportBounds)
         CreateRenderTargets();
-    if (UseAA && (!MultisampleTexture || MSAASettingsChanged || MultisampleTexture->width() < Frame->FX || MultisampleTexture->height() < Frame->FY))
+    if (UseAA && (!MultisampleTexture || MSAASettingsChanged || ChangedViewportBounds))
         CreateMultisampleRenderTargets();
 }
 
