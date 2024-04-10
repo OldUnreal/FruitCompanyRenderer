@@ -882,16 +882,16 @@ void UFruCoReRenderDevice::ShaderProgram::BuildPipelineStates
 }
 
 /*-----------------------------------------------------------------------------
- GetPolyFlagsAndShaderOptions
+    GetPolyFlagsAndShaderOptions
 -----------------------------------------------------------------------------*/
-DWORD UFruCoReRenderDevice::GetPolyFlagsAndShaderOptions(DWORD PolyFlags, DWORD& Options)
+DWORD UFruCoReRenderDevice::GetPolyFlagsAndShaderOptions(DWORD PolyFlags, DWORD& Options, bool RemoveOccludeIfSolid)
 {
     if( (PolyFlags & (PF_RenderFog|PF_Translucent)) != PF_RenderFog )
         PolyFlags &= ~PF_RenderFog;
 
     if (!(PolyFlags & (PF_Translucent | PF_Modulated | PF_AlphaBlend | PF_Highlighted)))
         PolyFlags |= PF_Occlude;
-    else
+    else if (RemoveOccludeIfSolid)
         PolyFlags &= ~PF_Occlude;
     
     // fast path. If no relevant polyflags have changed since our previous query, then just return the same ShaderOptions as last time

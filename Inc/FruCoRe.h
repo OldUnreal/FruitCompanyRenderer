@@ -743,7 +743,7 @@ class UFruCoReRenderDevice : public URenderDevice
     // Renderer-specific functions
     //
     void SetProgram(INT Program);
-    DWORD GetPolyFlagsAndShaderOptions(DWORD PolyFlags, DWORD& Options);
+    DWORD GetPolyFlagsAndShaderOptions(DWORD PolyFlags, DWORD& Options, bool RemoveOccludeIfSolid=false);
     static BlendMode GetBlendMode(DWORD PolyFlags);
     void SetDepthMode(DepthMode Mode);
     void SetTexture(INT TexNum, FTextureInfo& Info, DWORD PolyFlags, FLOAT PanBias);
