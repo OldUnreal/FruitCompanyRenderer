@@ -544,13 +544,17 @@ void UFruCoReRenderDevice::SetProjection(FSceneNode *Frame, UBOOL bNearZ)
         (StoredFovAngle != Frame->Viewport->Actor->FovAngle ||
          StoredBrightness != Frame->Viewport->GetOuterUClient()->Brightness ||
          UniformsChanged);
-    const auto ChangedViewportBounds =
+    const auto ChangedProjectionParams =
         (StoredFX != Frame->FX ||
          StoredFY != Frame->FY ||
          StoredOriginX != Frame->XB ||
          StoredOriginY != Frame->YB);
+	const auto ChangedDrawableSize =
+		(!DepthTexture ||
+		 DepthTexture->width() != Drawable->texture()->width() ||
+		 DepthTexture->height() != Drawable->texture()->height());
     
-    if (!ChangedUniforms && !ChangedViewportBounds)
+    if (!ChangedUniforms && !ChangedProjectionParams && !ChangedDrawableSize)
         return;
     
     UniformsChanged = FALSE;
@@ -613,7 +617,7 @@ void UFruCoReRenderDevice::SetProjection(FSceneNode *Frame, UBOOL bNearZ)
     
     if (CommandEncoder)
     {
-        if (ChangedViewportBounds)
+        if (ChangedProjectionParams)
         {
             CommandEncoder->endEncoding();
             CommandEncoder->release();
@@ -624,9 +628,9 @@ void UFruCoReRenderDevice::SetProjection(FSceneNode *Frame, UBOOL bNearZ)
     
     // debugf(TEXT("Frucore: Set projection matrix"));
     
-    if (!DepthTexture || ChangedViewportBounds)
+    if (ChangedDrawableSize)
         CreateRenderTargets();
-    if (UseAA && (!MultisampleTexture || MSAASettingsChanged || ChangedViewportBounds))
+    if (UseAA && (!MultisampleTexture || MSAASettingsChanged || ChangedDrawableSize))
         CreateMultisampleRenderTargets();
 }
 
