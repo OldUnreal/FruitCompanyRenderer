@@ -439,7 +439,11 @@ void UFruCoReRenderDevice::GetStats(TCHAR* Result)
 /*-----------------------------------------------------------------------------
 	ReadPixels
 -----------------------------------------------------------------------------*/
+#if ENGINE_VERSION==227
+void UFruCoReRenderDevice::ReadPixels(FColor* Pixels, UBOOL GammaCorrectOutput)
+#else
 void UFruCoReRenderDevice::ReadPixels(FColor* Pixels)
+#endif
 {
     check(!CommandEncoder);
     Drawable = Layer->nextDrawable();
