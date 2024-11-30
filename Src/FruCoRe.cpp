@@ -9,7 +9,6 @@
 #include "Render.h"
 #define GENERATE_METAL_IMPLEMENTATION
 #include "FruCoRe.h"
-#include <libkern/OSAtomic.h>
 
 /*-----------------------------------------------------------------------------
 	Package Registration
@@ -47,6 +46,7 @@ void UFruCoReRenderDevice::StaticConstructor()
     SupportsFogMaps = true;
     Coronas = true;
     SupportsTC = true;
+	ShinySurfaces = true;
     
     // 469-specific RenderDevice settings
 #if UNREAL_TOURNAMENT_OLDUNREAL
@@ -309,7 +309,7 @@ void UFruCoReRenderDevice::Lock(FPlane _FlashScale, FPlane _FlashFog, FPlane Scr
 	}
 
 	RendererSuspended = FALSE;
-	OSAtomicIncrement32(&NumInFlightFrames);
+	__sync_fetch_and_add(&NumInFlightFrames, 1);
 	
     SetDepthMode(DEPTH_Test_And_Write);
     DrawingWeapon = false;
@@ -368,7 +368,7 @@ void UFruCoReRenderDevice::Unlock(UBOOL Blit)
         CommandBuffer->presentDrawable(Drawable);
 
 	CommandBuffer->addCompletedHandler(^void( MTL::CommandBuffer* Buf ){
-			OSAtomicDecrement32(&NumInFlightFrames);
+			__sync_fetch_and_sub(&NumInFlightFrames, 1);
 		});
 		
     CommandBuffer->commit();
