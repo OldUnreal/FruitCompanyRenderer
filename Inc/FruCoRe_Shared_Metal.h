@@ -1,19 +1,20 @@
 enum ShaderOptions
 {
-    OPT_None            = 0x000,
-    OPT_DetailTexture   = 0x001,
-    OPT_MacroTexture    = 0x002,
-    OPT_LightMap        = 0x004,
-    OPT_FogMap          = 0x008,
-    OPT_RenderFog       = 0x010,
-    OPT_Modulated       = 0x020,
-    OPT_Masked          = 0x040,
-    OPT_AlphaBlended    = 0x080,  // straight or premultiplied. doesn't matter
-    OPT_NoMSAA          = 0x100,
-    OPT_MSAAx2          = 0x200,
-    OPT_MSAAx4          = 0x400,
-    OPT_MSAAx8          = 0x800,
-    OPT_Max             = 0x800
+    OPT_None            = 0x0000,
+    OPT_DetailTexture   = 0x0001,
+    OPT_MacroTexture    = 0x0002,
+    OPT_LightMap        = 0x0004,
+    OPT_FogMap          = 0x0008,
+    OPT_RenderFog       = 0x0010,
+    OPT_Modulated       = 0x0020,
+    OPT_Masked          = 0x0040,
+    OPT_AlphaBlended    = 0x0080,  // straight or premultiplied. doesn't matter
+    OPT_NoMSAA          = 0x0100,
+    OPT_MSAAx2          = 0x0200,
+    OPT_MSAAx4          = 0x0400,
+    OPT_MSAAx8          = 0x0800,
+	OPT_NoSmooth        = 0x1000,
+    OPT_Max             = 0x1000
 };
 
 // Metal vertex shaders all share the same argument table.
@@ -83,6 +84,7 @@ constant bool IsModulated       [[ function_constant(OPT_Modulated)     ]];
 constant bool IsMasked          [[ function_constant(OPT_Masked)        ]];
 constant bool IsAlphaBlended    [[ function_constant(OPT_AlphaBlended)  ]];
 constant bool ShouldRenderFog   [[ function_constant(OPT_RenderFog)     ]];
+constant bool NoSmooth          [[ function_constant(OPT_NoSmooth)      ]];
 
 constant float2 FullscreenQuad[] =
 {

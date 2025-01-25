@@ -419,6 +419,7 @@ class UFruCoReRenderDevice : public URenderDevice
         ADD_OPTION(OPT_MSAAx2);
         ADD_OPTION(OPT_MSAAx4);
         ADD_OPTION(OPT_MSAAx8);
+		ADD_OPTION(OPT_NoSmooth);
         if (Result.Len() == 0)
             Result = TEXT("OPT_None");
         return Result;

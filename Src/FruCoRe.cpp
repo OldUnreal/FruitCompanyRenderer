@@ -611,7 +611,7 @@ void UFruCoReRenderDevice::SetProjection(FSceneNode *Frame, UBOOL bNearZ)
     GlobalUniforms->zNear = zNear;
     GlobalUniforms->zFar = zFar;
     GlobalUniforms->Brightness = StoredBrightness;
-    GlobalUniforms->Gamma = 2.0 + GammaOffset;
+    GlobalUniforms->Gamma = 1.7 + GammaOffset;
     GlobalUniforms->LODBias = LODBias;
     GlobalUniforms->DetailMax = 2;
     GlobalUniforms->LightMapFactor = OneXBlending ? 2.f : 4.f;
@@ -903,7 +903,7 @@ DWORD UFruCoReRenderDevice::GetPolyFlagsAndShaderOptions(DWORD PolyFlags, DWORD&
         PolyFlags &= ~PF_Occlude;
     
     // fast path. If no relevant polyflags have changed since our previous query, then just return the same ShaderOptions as last time
-    const DWORD RelevantPolyFlags = (PF_Modulated|PF_RenderFog|PF_Masked|PF_Straight_AlphaBlend|PF_Premultiplied_AlphaBlend);
+    const DWORD RelevantPolyFlags = (PF_Modulated|PF_RenderFog|PF_Masked|PF_Straight_AlphaBlend|PF_Premultiplied_AlphaBlend|PF_NoSmooth);
     if ((CachedPolyFlags&RelevantPolyFlags) ^ (PolyFlags&RelevantPolyFlags))
     {
         Options = OPT_None;
@@ -919,6 +919,9 @@ DWORD UFruCoReRenderDevice::GetPolyFlagsAndShaderOptions(DWORD PolyFlags, DWORD&
         
         if (PolyFlags & (PF_Straight_AlphaBlend|PF_Premultiplied_AlphaBlend))
             Options |= OPT_AlphaBlended;
+
+		if (PolyFlags & PF_NoSmooth)
+			Options |= OPT_NoSmooth;
         
         Options |= CachedMSAAOptions;
         
