@@ -51,6 +51,7 @@ class UFruCoReRenderDevice : public URenderDevice
     UBOOL UseVSync;
     UBOOL UseAA;
     UBOOL OneXBlending;
+	UBOOL ActorXBlending;
 	UBOOL UseGammaCorrection;
     INT NumAASamples;
     FLOAT LODBias;
@@ -766,13 +767,13 @@ class UFruCoReRenderDevice : public URenderDevice
 //private:
     // Persistent state
 	UViewport*                      Viewport;
-	SDL_Renderer*                   Renderer;
 	CA::MetalLayer*                 Layer;
 	MTL::Device*                    Device;
     BufferObject<GlobalUniforms>    GlobalUniformsBuffer;
     MTL::CommandQueue*              CommandQueue;
     MTL::DepthStencilState*         DepthStencilStates[DEPTH_Max];
     DepthMode                       CurrentDepthMode;
+    MTL::PixelFormat                FrameBufferPixelFormat;
     
     // Render pipeline options
     //

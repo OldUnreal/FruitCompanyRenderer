@@ -9,6 +9,7 @@
 #include "Render.h"
 #define GENERATE_METAL_IMPLEMENTATION
 #include "FruCoRe.h"
+#include "FruCoRe_Helpers.h"
 
 /*-----------------------------------------------------------------------------
 	Package Registration
@@ -34,6 +35,7 @@ void UFruCoReRenderDevice::StaticConstructor()
     new(GetClass(),TEXT("UseAA"), RF_Public)UBoolProperty(CPP_PROPERTY(UseAA), TEXT("Options"), CPF_Config);
     new(GetClass(),TEXT("MacroTextures"), RF_Public)UBoolProperty(CPP_PROPERTY(MacroTextures), TEXT("Options"), CPF_Config );
     new(GetClass(),TEXT("OneXBlending"), RF_Public)UBoolProperty(CPP_PROPERTY(OneXBlending), TEXT("Options"), CPF_Config );
+    new(GetClass(),TEXT("ActorXBlending"), RF_Public)UBoolProperty(CPP_PROPERTY(ActorXBlending), TEXT("Options"), CPF_Config );
 	new(GetClass(),TEXT("UseGammaCorrection"), RF_Public)UBoolProperty(CPP_PROPERTY(UseGammaCorrection), TEXT("Options"), CPF_Config );
     new(GetClass(),TEXT("NumAASamples"), RF_Public)UIntProperty(CPP_PROPERTY(NumAASamples), TEXT("Options"), CPF_Config );
     new(GetClass(),TEXT("LODBias"), RF_Public)UFloatProperty(CPP_PROPERTY(LODBias), TEXT("Options"), CPF_Config );
@@ -50,14 +52,17 @@ void UFruCoReRenderDevice::StaticConstructor()
     
     // 469-specific RenderDevice settings
 #if UNREAL_TOURNAMENT_OLDUNREAL
-    UseLightmapAtlas = true;
+    HighDetailActors = true;
+    UseLightmapAtlas = false;
+    MaxTextureSize = 2048;
 #endif
     
     // Frucore-specific settings
     UseVSync = false;
     UseAA = false;
     MacroTextures = true;
-    OneXBlending = true;
+    OneXBlending = false;
+	ActorXBlending = true;
 	UseGammaCorrection = true;
     LODBias = 0.f;
     GammaOffset = 0.f;
@@ -80,6 +85,8 @@ void UFruCoReRenderDevice::PostEditChange()
     SetMSAAOptions();
     if (UseAA && !MultisampleTexture)
         CreateMultisampleRenderTargets();
+    if (Layer)
+        SetMetalVSync(Layer, UseVSync);
 }
 
 /*-----------------------------------------------------------------------------
@@ -146,7 +153,7 @@ MTL::RenderPipelineState* UFruCoReRenderDevice::BuildPostprocessPipelineState(co
     PipelineDescriptor->setFragmentFunction(FragmentShader);
     
     auto ColorAttachment = PipelineDescriptor->colorAttachments()->object(0);
-    ColorAttachment->setPixelFormat(MTL::PixelFormat::PixelFormatBGRA8Unorm);
+    ColorAttachment->setPixelFormat(FrameBufferPixelFormat);
     ColorAttachment->setBlendingEnabled(false);
     PipelineDescriptor->setLabel(NS::String::string(StateName, NS::UTF8StringEncoding));
         
@@ -178,12 +185,34 @@ UBOOL UFruCoReRenderDevice::Init(UViewport* InViewport, INT NewX, INT NewY, INT 
 
 	// Initialize an SDL Metal Renderer for this Window
 	SDL_Window* Window = reinterpret_cast<SDL_Window*>(InViewport->GetWindow());
-	Renderer = SDL_CreateRenderer(Window, -1, (UseVSync ? SDL_RENDERER_PRESENTVSYNC : 0) | SDL_RENDERER_ACCELERATED);
-	Layer    = reinterpret_cast<CA::MetalLayer*>(SDL_RenderGetMetalLayer(Renderer));
-	Device   = reinterpret_cast<MTL::Device*>(Layer->device());
-    CommandQueue = Device->newCommandQueue();
-	
-    if (!Renderer || !Layer || !Device || !CommandQueue)
+    SDL_MetalView View = SDL_Metal_CreateView(Window);
+    Layer    = reinterpret_cast<CA::MetalLayer*>(SDL_Metal_GetLayer(View));
+//	Device   = reinterpret_cast<MTL::Device*>(Layer->device());
+    if (Layer)
+    {
+        Device  = MTL::CreateSystemDefaultDevice();
+        Layer->setDevice(Device);
+        SetMetalVSync(Layer, UseVSync);
+    }
+    if (Device)
+    {
+        CommandQueue = Device->newCommandQueue();
+        
+        SDL_PixelFormat* SDLPixelFormat = nullptr;
+        if (Device->supportsFeatureSet(MTL::FeatureSet_macOS_GPUFamily1_v1))
+        {
+            FrameBufferPixelFormat = MTL::PixelFormatRGB10A2Unorm;
+			debugf(TEXT("Frucore: Using RGB10A2 frame buffer"));
+        }
+        else
+        {
+            FrameBufferPixelFormat = MTL::PixelFormatRGBA16Float;
+			debugf(TEXT("Frucore: Using RGBA16Float frame buffer"));
+        }
+        Layer->setPixelFormat(FrameBufferPixelFormat);
+        Layer->setFramebufferOnly(true);
+    }
+    if (!Layer || !Device || !CommandQueue)
     {
         debugf(TEXT("Frucore: Failed to create device"));
         return FALSE;
@@ -266,7 +295,6 @@ void UFruCoReRenderDevice::Exit()
         CommandQueue->release();
     if (Device)
         Device->release();
-	SDL_DestroyRenderer(Renderer);
 }
 
 /*-----------------------------------------------------------------------------
@@ -615,7 +643,8 @@ void UFruCoReRenderDevice::SetProjection(FSceneNode *Frame, UBOOL bNearZ)
     GlobalUniforms->LODBias = LODBias;
     GlobalUniforms->DetailMax = 2;
     GlobalUniforms->LightMapFactor = OneXBlending ? 2.f : 4.f;
-        
+	GlobalUniforms->LightColorIntensity = ActorXBlending ? 1.f : 1.5f;
+
     // Push to the GPU
     GlobalUniformsBuffer.BufferData(true);
     
@@ -665,7 +694,7 @@ void UFruCoReRenderDevice::CreateRenderTargets()
     DepthTexture->setLabel(NS::String::string("DepthStencil", NS::UTF8StringEncoding));
     
     TextureDescriptor->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
-    TextureDescriptor->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
+    TextureDescriptor->setPixelFormat(FrameBufferPixelFormat);
     GammaCorrectInputTexture = Device->newTexture(TextureDescriptor);
     GammaCorrectInputTexture->setLabel(NS::String::string("GammaCorrectInput", NS::UTF8StringEncoding));
     
@@ -694,7 +723,7 @@ void UFruCoReRenderDevice::CreateMultisampleRenderTargets()
     TextureDescriptor->setTextureType(MTL::TextureType2DMultisample);
     TextureDescriptor->setStorageMode(MTL::StorageModePrivate);
     TextureDescriptor->setUsage(MTL::TextureUsageRenderTarget | MTL::TextureUsageShaderRead);
-    TextureDescriptor->setPixelFormat(MTL::PixelFormatBGRA8Unorm);
+    TextureDescriptor->setPixelFormat(FrameBufferPixelFormat);
     
     MultisampleTexture = Device->newTexture(TextureDescriptor);
     MultisampleTexture->setLabel(NS::String::string("Multisample", NS::UTF8StringEncoding));
@@ -840,7 +869,7 @@ void UFruCoReRenderDevice::ShaderProgram::BuildPipelineStates
     //PipelineDescriptor->setStencilAttachmentPixelFormat(MTL::PixelFormat::PixelFormatDepth32Float_Stencil8);
     
     auto ColorAttachment = PipelineDescriptor->colorAttachments()->object(0);
-    ColorAttachment->setPixelFormat(MTL::PixelFormat::PixelFormatBGRA8Unorm);
+    ColorAttachment->setPixelFormat(RenDev->FrameBufferPixelFormat);
     
     struct BlendState
     {

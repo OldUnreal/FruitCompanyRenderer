@@ -25,6 +25,7 @@ fragment float4 GammaCorrectFragment
     device const GlobalUniforms* Uniforms [[buffer(IDX_Uniforms)]]
 )
 {
-    constexpr sampler s(min_filter::nearest, mag_filter::nearest, mip_filter::none);
+    constexpr sampler s(mag_filter::linear, min_filter::linear, mip_filter::none, address::clamp_to_edge);
+    //constexpr sampler s(mag_filter::nearest, min_filter::nearest, mip_filter::none, address::clamp_to_edge);
     return GammaCorrect(Uniforms->Gamma, tex.sample(s, in.UV));
 }

@@ -39,7 +39,7 @@ vertex GouraudVertexOutput DrawGouraudVertex
     //if (Data[InstanceID].DrawFlags & DF_NoNearZ)
     //    Result.Position.w -= Uniforms->zNear - 1;
     
-    Result.LightColor   = Vertices[VertexID].LightColor;
+    Result.LightColor   = Vertices[VertexID].LightColor * Uniforms->LightColorIntensity;
     Result.FogColor     = Vertices[VertexID].FogColor;
     Result.DiffuseUV    = Vertices[VertexID].UV.xy * Data[InstanceID].DiffuseInfo.xy;
     Result.DiffuseInfo  = Data[InstanceID].DiffuseInfo.zw;

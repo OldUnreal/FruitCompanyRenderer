@@ -66,7 +66,8 @@ struct GlobalUniforms
     float Brightness;
     float Gamma;
     float LightMapFactor; // 2 for OneXBlending, 4 for !OneXBlending
-    bool HitTesting;
+	float LightColorIntensity; // 1 for ActorXBlending, 1.5 for !ActorXBlending
+	bool HitTesting;
     uint32_t RendMap;
     uint32_t DetailMax;
 };
@@ -104,11 +105,7 @@ typedef struct
 
 inline float4 GammaCorrect(float Gamma, float4 Color)
 {
-    float InvGamma = 1.0 / Gamma;
-    Color.r = pow(Color.r, InvGamma);
-    Color.g = pow(Color.g, InvGamma);
-    Color.b = pow(Color.b, InvGamma);
-    return Color;
+    return float4(pow(Color.rgb, 1.0 / Gamma), 1.0);
 }
 
 inline float4 ApplyPolyFlags(float4 Color, float4 LightColor)
