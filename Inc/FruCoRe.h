@@ -43,6 +43,14 @@ class UFruCoReRenderDevice : public URenderDevice
 {
 	DECLARE_CLASS(UFruCoReRenderDevice,URenderDevice,CLASS_Config,FruCoRe);
 #endif
+
+	enum EFramebufferBpc
+	{
+		FB_BPC_8bit,
+		FB_BPC_10bit,
+		FB_BPC_16bit
+	};
+
 	
     //
     // Renderer Options
@@ -56,6 +64,7 @@ class UFruCoReRenderDevice : public URenderDevice
     INT NumAASamples;
     FLOAT LODBias;
     FLOAT GammaOffset;
+	BYTE FramebufferBpc;
     
     //
     // A BufferObject describes a GPU-mapped buffer object

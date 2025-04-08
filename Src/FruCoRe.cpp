@@ -40,6 +40,12 @@ void UFruCoReRenderDevice::StaticConstructor()
     new(GetClass(),TEXT("NumAASamples"), RF_Public)UIntProperty(CPP_PROPERTY(NumAASamples), TEXT("Options"), CPF_Config );
     new(GetClass(),TEXT("LODBias"), RF_Public)UFloatProperty(CPP_PROPERTY(LODBias), TEXT("Options"), CPF_Config );
     new(GetClass(),TEXT("GammaOffset"), RF_Public)UFloatProperty(CPP_PROPERTY(GammaOffset), TEXT("Options"), CPF_Config );
+
+	UEnum* FramebufferBpcEnum = new(GetClass(), TEXT("FramebufferBpc")) UEnum(nullptr);
+	new(FramebufferBpcEnum->Names) FName(TEXT("8bpc"));
+	new(FramebufferBpcEnum->Names) FName(TEXT("10bpc"));
+	new(FramebufferBpcEnum->Names) FName(TEXT("16bpc"));
+	new(GetClass(), TEXT("FramebufferBpc"), RF_Public)UByteProperty(CPP_PROPERTY(FramebufferBpc), TEXT("Options"), CPF_Config, FramebufferBpcEnum);
     
     // Generic RenderDevice settings
     VolumetricLighting = true;
@@ -67,6 +73,7 @@ void UFruCoReRenderDevice::StaticConstructor()
     LODBias = 0.f;
     GammaOffset = 0.f;
     NumAASamples = 4;
+	FramebufferBpc = FB_BPC_10bit; 
 }
 
 /*-----------------------------------------------------------------------------
@@ -199,16 +206,21 @@ UBOOL UFruCoReRenderDevice::Init(UViewport* InViewport, INT NewX, INT NewY, INT 
         CommandQueue = Device->newCommandQueue();
         
         SDL_PixelFormat* SDLPixelFormat = nullptr;
-        if (Device->supportsFeatureSet(MTL::FeatureSet_macOS_GPUFamily1_v1))
+        if (FramebufferBpc == FB_BPC_10bit && Device->supportsFeatureSet(MTL::FeatureSet_macOS_GPUFamily1_v1))
         {
             FrameBufferPixelFormat = MTL::PixelFormatRGB10A2Unorm;
 			debugf(TEXT("Frucore: Using RGB10A2 frame buffer"));
         }
-        else
+        else if (FramebufferBpc == FB_BPC_16bit)
         {
             FrameBufferPixelFormat = MTL::PixelFormatRGBA16Float;
 			debugf(TEXT("Frucore: Using RGBA16Float frame buffer"));
         }
+		else
+		{
+			FrameBufferPixelFormat = MTL::PixelFormatBGRA8Unorm;
+			debugf(TEXT("Frucore: Using BGRA8 frame buffer"));
+		}
         Layer->setPixelFormat(FrameBufferPixelFormat);
         Layer->setFramebufferOnly(true);
     }
